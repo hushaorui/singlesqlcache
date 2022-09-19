@@ -1,6 +1,6 @@
 package com.hushaorui.ssc.main;
 
-import com.hushaorui.ssc.common.data.SingleSqlCacheConfig;
+import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**

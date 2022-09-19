@@ -1,2 +1,5 @@
 /singlesqlcache.iml
 .idea
+/target
+/out
+/build

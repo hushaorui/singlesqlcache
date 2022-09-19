@@ -2,10 +2,8 @@ package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
-import com.hushaorui.ssc.common.anno.IdDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
-import com.hushaorui.ssc.common.data.SingleSqlCacheConfig;
-import com.hushaorui.ssc.common.em.TableNameStyle;
+import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.util.SscStringUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -71,6 +69,8 @@ public abstract class AbstractTableOperator {
             Map<String, String> propColumnMapping = new LinkedHashMap<>();
             // 所有的表字段名和类字段名的映射
             Map<String, String> columnPropMapping = new LinkedHashMap<>();
+            // 所有的类字段名和数据库表字段类型的映射
+            Map<String, String> propColumnTypeMapping = new HashMap<>();
             // 所有类字段名和它的get方法
             Map<String, Method> propGetMethods = new HashMap<>();
             // 所有的类字段名和它的set方法
@@ -78,16 +78,16 @@ public abstract class AbstractTableOperator {
             // 所有不为空的字段集合
             Set<String> notNullProps = new HashSet<>();
             // 所有唯一键的字段集合
-            Set<String> uniqueProps = new HashSet<>();
+            Map<String, Set<String>> uniqueProps = new HashMap<>();
             // 所有不会更新的字段集合
             Set<String> notUpdateProps = new HashSet<>();
+            // 所有不需要缓存的字段集合
+            Set<String> notCachedProps = new HashSet<>();
             // 所有根据某些字段查询所有符合条件的数据的集合
             Map<String, Set<String>> findAllProps = new HashMap<>();
 
             // id字段的名称
             String idPropName = null;
-            // 分表的字段的get方法
-            Method splitFieldGetMethod = null;
             Class<?> tempClass = clazz;
             while (! Object.class.equals(tempClass)) {
                 Field[] declaredFields = tempClass.getDeclaredFields();
@@ -110,6 +110,9 @@ public abstract class AbstractTableOperator {
                             continue;
                         }
                         if (fieldDesc.isId()) {
+                            if (idPropName != null) {
+                                throw new SscRuntimeException(String.format("ID field can only have one in class: %s", clazz.getName()));
+                            }
                             idPropName = propName;
                         }
                         String value = fieldDesc.value();
@@ -125,28 +128,73 @@ public abstract class AbstractTableOperator {
                     // 将类字段名和表字段名添加映射
                     propColumnMapping.put(propName, columnName);
                     columnPropMapping.put(columnName, propName);
-
+                    Class<?> fieldType = field.getType();
+                    String getMethodName = SscStringUtils.getGetMethodNameByFieldName(field);
+                    Method getMethod;
+                    try {
+                        getMethod = clazz.getMethod(getMethodName);
+                        propGetMethods.put(propName, getMethod);
+                    } catch (NoSuchMethodException e) {
+                        throw new SscRuntimeException(String.format("Field has no getter method, name: %s in class: %s", propName, clazz.getName()));
+                    }
+                    String setMethodName = SscStringUtils.getSetMethodNameByFieldName(field);
+                    Method setMethod;
+                    try {
+                        setMethod = clazz.getMethod(setMethodName, fieldType);
+                        propSetMethods.put(propName, setMethod);
+                    } catch (NoSuchMethodException e) {
+                        throw new SscRuntimeException(String.format("Field has no setter method, name: %s in class: %s", propName, clazz.getName()));
+                    }
+                    if (fieldDesc != null) {
+                        if (fieldDesc.isNotNull()) {
+                            notNullProps.add(propName);
+                        }
+                        String columnType = fieldDesc.columnType();
+                        if (columnType.length() == 0) {
+                            columnType = singleSqlCacheConfig.getJavaTypeToTableType().getOrDefault(fieldType, singleSqlCacheConfig.getDefaultTableType());
+                        }
+                        if ("VARCHAR".equals(columnType)) {
+                            columnType = String.format("%s(%s)", columnType, singleSqlCacheConfig.getDefaultLength());
+                        }
+                        propColumnTypeMapping.put(propName, columnType);
+                        String uniqueName = fieldDesc.uniqueName();
+                        uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
+                        if (fieldDesc.isNotUpdate()) {
+                            notUpdateProps.add(propName);
+                        }
+                        if (! fieldDesc.cached()) {
+                            notCachedProps.add(propName);
+                        }
+                        String allGroupName = fieldDesc.findAllGroupName();
+                        findAllProps.computeIfAbsent(allGroupName, key -> new HashSet<>()).add(propName);
+                    }
                 }
                 tempClass = tempClass.getSuperclass();
+            }
+            if (propColumnMapping.isEmpty()) {
+                throw new SscRuntimeException("No data in the table: " + tableName);
+            }
+            if (idPropName == null) {
+                // 没有标注id，则第一个字段为id
+                idPropName = propColumnMapping.keySet().iterator().next();
             }
             dataClassDesc.setTableCount(tableCount);
             dataClassDesc.setTableName(tableName);
             dataClassDesc.setColumnPropMapping(columnPropMapping);
             dataClassDesc.setPropColumnMapping(propColumnMapping);
+            dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping);
             dataClassDesc.setPropGetMethods(propGetMethods);
             dataClassDesc.setPropSetMethods(propSetMethods);
-            dataClassDesc.setSplitFieldGetMethod(splitFieldGetMethod);
             dataClassDesc.setIdPropName(idPropName);
             dataClassDesc.setNotNullProps(notNullProps);
             dataClassDesc.setUniqueProps(uniqueProps);
             dataClassDesc.setNotUpdateProps(notUpdateProps);
+            dataClassDesc.setNotCachedProps(notCachedProps);
             dataClassDesc.setFindAllProps(findAllProps);
-            // TODO 补充，比如id
 
             tableNameMapping.put(tableName, dataClassDesc);
             return dataClassDesc;
         });
-
     }
 
     private String generateColumnName(String propName) {
