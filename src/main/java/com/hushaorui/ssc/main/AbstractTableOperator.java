@@ -1,19 +1,26 @@
 package com.hushaorui.ssc.main;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
+import com.hushaorui.ssc.common.data.SscTableInfo;
+import com.hushaorui.ssc.config.IdGeneratePolicy;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.util.SscStringUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+@Slf4j
 public abstract class AbstractTableOperator {
     /** 核心配置 */
     protected SingleSqlCacheConfig singleSqlCacheConfig;
@@ -26,8 +33,8 @@ public abstract class AbstractTableOperator {
     /** 取出缓存的开关，全局性质，控制所有 */
     private static boolean getSwitch = true;
     /** 所有的数据类描述 */
-    protected static final Map<Class<Serializable>, DataClassDesc> dataClassMapping = new HashMap<>();
-    protected static final Map<String, DataClassDesc> tableNameMapping = new HashMap<>();
+    protected static final Map<Class<?>, SscTableInfo> dataClassMapping = new HashMap<>();
+    protected static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
 
     public AbstractTableOperator(JdbcTemplate jdbcTemplate, SingleSqlCacheConfig singleSqlCacheConfig) {
         this.jdbcTemplate = jdbcTemplate;
@@ -39,10 +46,11 @@ public abstract class AbstractTableOperator {
     }
 
     /** 注册所有的数据类 */
-    public void registerDataClass(Class<Serializable> dataClass) {
+    public void registerDataClass(Class<?> dataClass) {
         dataClassMapping.computeIfAbsent(dataClass, clazz -> {
             DataClassDesc dataClassDesc = new DataClassDesc();
             dataClassDesc.setDataClass(clazz);
+            // 表的数量
             int tableCount;
             DataClass annotation = clazz.getDeclaredAnnotation(DataClass.class);
             // 表名
@@ -77,14 +85,14 @@ public abstract class AbstractTableOperator {
             Map<String, Method> propSetMethods = new HashMap<>();
             // 所有不为空的字段集合
             Set<String> notNullProps = new HashSet<>();
+            // 有默认值的字段集合
+            Map<String, String> propDefaultValues = new HashMap<>();
             // 所有唯一键的字段集合
             Map<String, Set<String>> uniqueProps = new HashMap<>();
             // 所有不会更新的字段集合
             Set<String> notUpdateProps = new HashSet<>();
             // 所有不需要缓存的字段集合
             Set<String> notCachedProps = new HashSet<>();
-            // 所有根据某些字段查询所有符合条件的数据的集合
-            Map<String, Set<String>> findAllProps = new HashMap<>();
 
             // id字段的名称
             String idPropName = null;
@@ -145,29 +153,41 @@ public abstract class AbstractTableOperator {
                     } catch (NoSuchMethodException e) {
                         throw new SscRuntimeException(String.format("Field has no setter method, name: %s in class: %s", propName, clazz.getName()));
                     }
+                    String columnType;
                     if (fieldDesc != null) {
                         if (fieldDesc.isNotNull()) {
                             notNullProps.add(propName);
+                        } else {
+                            String defaultValue = fieldDesc.defaultValue();
+                            if (defaultValue.length() > 0) {
+                                propDefaultValues.put(propName, defaultValue);
+                            }
                         }
-                        String columnType = fieldDesc.columnType();
-                        if (columnType.length() == 0) {
-                            columnType = singleSqlCacheConfig.getJavaTypeToTableType().getOrDefault(fieldType, singleSqlCacheConfig.getDefaultTableType());
-                        }
-                        if ("VARCHAR".equals(columnType)) {
-                            columnType = String.format("%s(%s)", columnType, singleSqlCacheConfig.getDefaultLength());
-                        }
-                        propColumnTypeMapping.put(propName, columnType);
+
                         String uniqueName = fieldDesc.uniqueName();
-                        uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
+                        if (uniqueName.length() > 0) {
+                            uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
+                        }
                         if (fieldDesc.isNotUpdate()) {
                             notUpdateProps.add(propName);
                         }
                         if (! fieldDesc.cached()) {
                             notCachedProps.add(propName);
                         }
-                        String allGroupName = fieldDesc.findAllGroupName();
-                        findAllProps.computeIfAbsent(allGroupName, key -> new HashSet<>()).add(propName);
+                        if (fieldDesc.columnType().length() == 0) {
+                            columnType = singleSqlCacheConfig.getJavaTypeToTableType().getOrDefault(fieldType, singleSqlCacheConfig.getDefaultTableType());
+                        } else {
+                            columnType = fieldDesc.columnType();
+                        }
+                    } else {
+                        // 没有 FieldDesc 注解，默认也当作表字段解析
+                        columnType = singleSqlCacheConfig.getJavaTypeToTableType().getOrDefault(fieldType, singleSqlCacheConfig.getDefaultTableType());
                     }
+                    // 这里目前只考虑到了mysql等和mysql差不多的数据库
+                    if ("VARCHAR".equals(columnType)) {
+                        columnType = String.format("%s(%s)", columnType, singleSqlCacheConfig.getDefaultLength());
+                    }
+                    propColumnTypeMapping.put(propName, columnType);
                 }
                 tempClass = tempClass.getSuperclass();
             }
@@ -187,15 +207,90 @@ public abstract class AbstractTableOperator {
             dataClassDesc.setPropSetMethods(propSetMethods);
             dataClassDesc.setIdPropName(idPropName);
             dataClassDesc.setNotNullProps(notNullProps);
+            dataClassDesc.setPropDefaultValues(propDefaultValues);
             dataClassDesc.setUniqueProps(uniqueProps);
             dataClassDesc.setNotUpdateProps(notUpdateProps);
             dataClassDesc.setNotCachedProps(notCachedProps);
-            dataClassDesc.setFindAllProps(findAllProps);
 
-            tableNameMapping.put(tableName, dataClassDesc);
-            return dataClassDesc;
+            SscTableInfo sscTableInfo = new SscTableInfo(dataClassDesc, singleSqlCacheConfig);
+            tableNameMapping.put(tableName, sscTableInfo);
+            switch (singleSqlCacheConfig.getLaunchPolicy()) {
+                case DROP_TABLE: {
+                    // 删除表
+                    for (String sql : sscTableInfo.getDropTableSql()) {
+                        jdbcTemplate.execute(sql);
+                    }
+                    break;
+                }
+                case DROP_TABLE_AND_CRETE: {
+                    // 删除表
+                    for (String sql : sscTableInfo.getDropTableSql()) {
+                        jdbcTemplate.execute(sql);
+                    }
+                    createTable(sscTableInfo.getCreateTableSql());
+                    break;
+                }
+                case CREATE_TABLE_IF_NOT_EXIST: {
+                    createTable(sscTableInfo.getCreateTableSql());
+                    break;
+                }
+                case MODIFY_COLUMN_IF_UPDATE: {
+                    createTable(sscTableInfo.getCreateTableSql());
+                    // TODO 待开发
+                    break;
+                }
+            }
+            System.out.println(JSONArray.toJSONString(sscTableInfo, SerializerFeature.PrettyFormat));
+            IdGeneratePolicy idGeneratePolicy = sscTableInfo.getIdGeneratePolicy();
+            if (idGeneratePolicy instanceof DefaultIntegerIdGeneratePolicy) {
+                DefaultIntegerIdGeneratePolicy policy = (DefaultIntegerIdGeneratePolicy) idGeneratePolicy;
+                int maxId = 0;
+                for (String sql : sscTableInfo.getSelectMaxIdSql()) {
+                    Integer id = jdbcTemplate.queryForObject(sql, Integer.class);
+                    if (id != null && id > maxId) {
+                        maxId = id;
+                    }
+                }
+                policy.map.put(clazz, new AtomicInteger(maxId + 1));
+            } else {
+                Map<Class<?>, AtomicLong> map;
+                if (idGeneratePolicy instanceof DefaultLongIdGeneratePolicy) {
+                    DefaultLongIdGeneratePolicy policy = (DefaultLongIdGeneratePolicy) idGeneratePolicy;
+                    map = policy.map;
+                } else if (idGeneratePolicy instanceof DefaultStringIdGeneratePolicy) {
+                    DefaultStringIdGeneratePolicy policy = (DefaultStringIdGeneratePolicy) idGeneratePolicy;
+                    map = policy.map;
+                } else {
+                    map = null;
+                }
+                if (map != null) {
+                    long maxId = 0;
+                    for (String sql : sscTableInfo.getSelectMaxIdSql()) {
+                        Long id = jdbcTemplate.queryForObject(sql, Long.class);
+                        if (id != null && id > maxId) {
+                            maxId = id;
+                        }
+                    }
+                    map.put(clazz, new AtomicLong(maxId + 1));
+                }
+            }
+            return sscTableInfo;
         });
+        log.info(String.format("class: %s register success", dataClass.getName()));
     }
+
+    private void createTable(String[] createTableSql) {
+        for (String sql : createTableSql) {
+            try {
+                jdbcTemplate.execute(sql);
+            } catch (Exception e) {
+                if (! e.getMessage().contains("already exists")) {
+                    throw new SscRuntimeException(e);
+                }
+            }
+        }
+    }
+
 
     private String generateColumnName(String propName) {
         switch (singleSqlCacheConfig.getColumnNameStyle()) {
@@ -210,7 +305,7 @@ public abstract class AbstractTableOperator {
         }
     }
 
-    private String generateTableName(Class<Serializable> clazz) {
+    private String generateTableName(Class<?> clazz) {
         switch (singleSqlCacheConfig.getTableNameStyle()) {
             case UPPERCASE_UNDERLINE:
                 return SscStringUtils.humpToUnderline(clazz.getSimpleName()).toUpperCase();
@@ -229,3 +324,4 @@ public abstract class AbstractTableOperator {
         }
     }
 }
+

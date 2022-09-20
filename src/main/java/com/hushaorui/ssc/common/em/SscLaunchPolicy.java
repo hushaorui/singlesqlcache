@@ -12,5 +12,7 @@ public enum SscLaunchPolicy {
     MODIFY_COLUMN_IF_UPDATE,
     /** 删除表格重新创建 */
     DROP_TABLE_AND_CRETE,
+    /** 删除表 */
+    DROP_TABLE,
 
 }

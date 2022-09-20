@@ -32,19 +32,17 @@ public class DataClassDesc {
     private Map<String, Method> propSetMethods;
     /** 所有不为空的字段集合 */
     private Set<String> notNullProps;
+    /** 所有有默认值的字段集合，影响建表语句 */
+    private Map<String, String> propDefaultValues;
     /** 所有唯一键的字段集合 */
     private Map<String, Set<String>> uniqueProps;
     /** 所有不会更新的字段集合 */
     private Set<String> notUpdateProps;
     /** 所有不需要缓存的字段集合 */
     private Set<String> notCachedProps;
-    /** 所有根据某些字段查询所有符合条件的数据的集合 */
-    private Map<String, Set<String>> findAllProps;
 
     /** id字段的名称 */
     private String idPropName;
-
-    private SscTableInfo tableInfo;
 
     public String getColumnByProp(String columnName) {
         return propColumnMapping.getOrDefault(columnName, columnName);

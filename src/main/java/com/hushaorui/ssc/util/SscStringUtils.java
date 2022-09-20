@@ -60,4 +60,14 @@ public abstract class SscStringUtils {
         }
         return setMethodName;
     }
+
+    /**
+     * 格式化输出一定长度的数字
+     * @param number 需要输出的数字
+     * @param length 输出的最小长度
+     * @return 格式化后的字符串
+     */
+    public static String getSameLengthString(long number, int length) {
+        return String.format("%0" + length + "d", number);
+    }
 }

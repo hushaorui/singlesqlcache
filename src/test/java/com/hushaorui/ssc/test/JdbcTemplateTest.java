@@ -2,6 +2,10 @@ package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
+import com.hushaorui.ssc.common.em.SscLaunchPolicy;
+import com.hushaorui.ssc.config.SingleSqlCacheConfig;
+import com.hushaorui.ssc.main.UniqueTableOperator;
+import com.hushaorui.ssc.test.common.TestPlayer;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,10 +13,8 @@ import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 
 import java.sql.SQLException;
-import java.util.LinkedList;
-import java.util.List;
 
-public class UniqueTableTest {
+public class JdbcTemplateTest {
     private JdbcTemplate jdbcTemplate;
     @Before
     public void beforeTest() {
@@ -53,6 +55,7 @@ public class UniqueTableTest {
         }
     }
 
+
     @Test
     public void test_dropTable() {
         try {
@@ -61,6 +64,20 @@ public class UniqueTableTest {
             e.printStackTrace();
         }
     }
+
+    @Test
+    public void test_registerDataClass() {
+        try {
+            SingleSqlCacheConfig config = new SingleSqlCacheConfig();
+            config.setLaunchPolicy(SscLaunchPolicy.DROP_TABLE_AND_CRETE);
+            UniqueTableOperator uniqueTableOperator = new UniqueTableOperator(jdbcTemplate, config);
+            uniqueTableOperator.registerDataClass(TestPlayer.class);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
 
     public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP) throws SQLException {
         DruidDataSource dataSource = new DruidDataSource();

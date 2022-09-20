@@ -3,6 +3,9 @@ package com.hushaorui.ssc.config;
 import com.hushaorui.ssc.common.em.ColumnNameStyle;
 import com.hushaorui.ssc.common.em.SscLaunchPolicy;
 import com.hushaorui.ssc.common.em.TableNameStyle;
+import com.hushaorui.ssc.main.DefaultIntegerIdGeneratePolicy;
+import com.hushaorui.ssc.main.DefaultLongIdGeneratePolicy;
+import com.hushaorui.ssc.main.DefaultStringIdGeneratePolicy;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -64,4 +67,12 @@ public class SingleSqlCacheConfig {
 
     /** 启动策略 */
     private SscLaunchPolicy launchPolicy = SscLaunchPolicy.CREATE_TABLE_IF_NOT_EXIST;
+
+    /** id生成策略 */
+    private Map<Class<?>, IdGeneratePolicy<?>> idGeneratePolicyMap = new HashMap<>();
+    {
+        idGeneratePolicyMap.put(Integer.class, DefaultIntegerIdGeneratePolicy.getInstance());
+        idGeneratePolicyMap.put(Long.class, DefaultLongIdGeneratePolicy.getInstance());
+        idGeneratePolicyMap.put(String.class, DefaultStringIdGeneratePolicy.getInstance());
+    }
 }
