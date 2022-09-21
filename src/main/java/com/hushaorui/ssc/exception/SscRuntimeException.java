@@ -8,4 +8,8 @@ public class SscRuntimeException extends RuntimeException {
     public SscRuntimeException(Throwable cause) {
         super(cause);
     }
+
+    public SscRuntimeException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

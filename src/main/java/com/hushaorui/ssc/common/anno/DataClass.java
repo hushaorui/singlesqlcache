@@ -1,10 +1,6 @@
 package com.hushaorui.ssc.common.anno;
 
-import com.hushaorui.ssc.config.IdGeneratePolicy;
-
 import java.lang.annotation.*;
-
-import static com.hushaorui.ssc.main.DefaultLongIdGeneratePolicy.*;
 
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

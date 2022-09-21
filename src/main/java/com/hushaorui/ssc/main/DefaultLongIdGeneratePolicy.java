@@ -18,6 +18,7 @@ public class DefaultLongIdGeneratePolicy implements IdGeneratePolicy<Long> {
         }
         return instance;
     }
+    private DefaultLongIdGeneratePolicy() {}
     Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
     @Override
     public Long getId(Class<?> dataClass) {

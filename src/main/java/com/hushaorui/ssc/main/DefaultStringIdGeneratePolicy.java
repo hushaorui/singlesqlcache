@@ -19,6 +19,7 @@ public class DefaultStringIdGeneratePolicy implements IdGeneratePolicy<String> {
         }
         return instance;
     }
+    private DefaultStringIdGeneratePolicy() {}
     Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
     @Override
     public String getId(Class<?> dataClass) {

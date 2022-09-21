@@ -1,10 +1,11 @@
 package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
-import com.hushaorui.ssc.common.em.SscLaunchPolicy;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
-import com.hushaorui.ssc.main.UniqueTableOperator;
+import com.hushaorui.ssc.main.Operator;
+import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.test.common.TestPlayer;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,15 +14,24 @@ import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.Date;
 
-public class JdbcTemplateTest {
+public class UniqueTableOperatorTest {
     private JdbcTemplate jdbcTemplate;
+    private TableOperatorFactory tableOperatorFactory;
     @Before
     public void beforeTest() {
         try {
             DruidDataSource druidDataSource = newDataSource("jdbc:mysql://192.168.1.239:3306/test_ssc?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC",
                     "root", "123456", 10);
             jdbcTemplate = new JdbcTemplate(druidDataSource);
+            SingleSqlCacheConfig config = new SingleSqlCacheConfig();
+            // 关闭缓存
+            config.setMaxInactiveTime(0);
+            // 设置启动策略
+            //config.setLaunchPolicy(SscLaunchPolicy.DROP_TABLE_AND_CRETE);
+            tableOperatorFactory = new TableOperatorFactory(jdbcTemplate, config);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -68,16 +78,54 @@ public class JdbcTemplateTest {
     @Test
     public void test_registerDataClass() {
         try {
-            SingleSqlCacheConfig config = new SingleSqlCacheConfig();
-            config.setLaunchPolicy(SscLaunchPolicy.DROP_TABLE_AND_CRETE);
-            UniqueTableOperator uniqueTableOperator = new UniqueTableOperator(jdbcTemplate, config);
-            uniqueTableOperator.registerDataClass(TestPlayer.class);
+            tableOperatorFactory.registerDataClass(TestPlayer.class);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    @Test
+    public void test_insert() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            operator.insert(getTestPlayer());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
+    @Test
+    public void test_update_select_delete() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            TestPlayer testPlayer = getTestPlayer();
+            operator.insert(testPlayer);
+            System.out.println("更新前: " + JSONArray.toJSONString(testPlayer));
+            testPlayer.setThirdId(8000000L);
+            testPlayer.setLastLoginTime(System.currentTimeMillis());
+            operator.update(testPlayer);
+            TestPlayer player = operator.selectById(testPlayer.getUserId());
+            System.out.println("更新后: " + JSONArray.toJSONString(player));
+            operator.delete(player);
+            player = operator.selectById(testPlayer.getUserId());
+            System.out.println("删除后: " + JSONArray.toJSONString(player));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private TestPlayer getTestPlayer() {
+        TestPlayer player = new TestPlayer();
+        player.setUsername("张三");
+        long now = System.currentTimeMillis();
+        player.setCreateTime(now);
+        player.setExtraString("extra111");
+        player.setThirdType("morlia");
+        player.setThirdId(1000000L);
+        player.setBirthdayTime(new Timestamp(now));
+        player.setPrimarySchoolStartDay(new Date());
+        return player;
+    }
 
     public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP) throws SQLException {
         DruidDataSource dataSource = new DruidDataSource();

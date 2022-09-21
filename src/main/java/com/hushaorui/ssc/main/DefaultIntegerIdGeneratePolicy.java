@@ -18,6 +18,7 @@ public class DefaultIntegerIdGeneratePolicy implements IdGeneratePolicy<Integer>
         }
         return instance;
     }
+    private DefaultIntegerIdGeneratePolicy() {}
     Map<Class<?>, AtomicInteger> map = new ConcurrentHashMap<>();
     @Override
     public Integer getId(Class<?> dataClass) {

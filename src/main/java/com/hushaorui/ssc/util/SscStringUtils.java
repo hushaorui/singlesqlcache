@@ -1,6 +1,10 @@
 package com.hushaorui.ssc.util;
 
+import com.sun.org.apache.xerces.internal.impl.dv.util.HexBin;
+
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 public abstract class SscStringUtils {
 
@@ -69,5 +73,37 @@ public abstract class SscStringUtils {
      */
     public static String getSameLengthString(long number, int length) {
         return String.format("%0" + length + "d", number);
+    }
+
+    /**
+     * 获取md5字符串
+     * @param sourceStr 原字符串
+     * @return md5字符串
+     */
+    public static String md5Encode(String sourceStr) {
+        String signStr = null;
+        try {
+            byte[] bytes = sourceStr.getBytes(StandardCharsets.UTF_8.name());
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            md5.update(bytes);
+            byte[] md5Byte = md5.digest();
+            if (md5Byte != null) {
+                signStr = HexBin.encode(md5Byte);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return signStr == null ? sourceStr : signStr.toLowerCase();
+    }
+
+    /**
+     * 获取字符串同步锁
+     *
+     * @param id       确保在同一个dataType下唯一
+     * @param dataType 数据类型
+     * @return 同步锁
+     */
+    public static String getLock(Object id, Class<?> dataType) {
+        return (id + dataType.getSimpleName()).intern();
     }
 }

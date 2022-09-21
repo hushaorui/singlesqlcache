@@ -3,18 +3,16 @@ package com.hushaorui.ssc.config;
 import com.hushaorui.ssc.common.em.ColumnNameStyle;
 import com.hushaorui.ssc.common.em.SscLaunchPolicy;
 import com.hushaorui.ssc.common.em.TableNameStyle;
-import com.hushaorui.ssc.main.DefaultIntegerIdGeneratePolicy;
-import com.hushaorui.ssc.main.DefaultLongIdGeneratePolicy;
-import com.hushaorui.ssc.main.DefaultStringIdGeneratePolicy;
+import com.hushaorui.ssc.exception.SscRuntimeException;
+import com.hushaorui.ssc.main.*;
+import javafx.util.Pair;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.sql.Timestamp;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 中心配置
@@ -24,8 +22,10 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SingleSqlCacheConfig {
-    /**缓存默认保留时间(不使用后开始计时) 单位：毫秒，默认5分钟 */
-    private long maxInactiveTime = 300000L;
+    /**缓存默认保留时间(不使用后开始计时) 单位：毫秒，默认5分钟，如果设置为0或小于0，则表示关闭缓存 */
+    private long maxInactiveTime = 300000;
+    /** 缓存默认持久化间隔时间 单位：毫秒 */
+    private long persistenceIntervalTime = 60000;
     /** 表名风格 (没有指定表名时使用) */
     private TableNameStyle tableNameStyle = TableNameStyle.LOWERCASE_UNDERLINE;
     /** 字段名风格 (没有指定字段名时使用) */
@@ -74,5 +74,38 @@ public class SingleSqlCacheConfig {
         idGeneratePolicyMap.put(Integer.class, DefaultIntegerIdGeneratePolicy.getInstance());
         idGeneratePolicyMap.put(Long.class, DefaultLongIdGeneratePolicy.getInstance());
         idGeneratePolicyMap.put(String.class, DefaultStringIdGeneratePolicy.getInstance());
+    }
+    /** 分表策略 */
+    private Map<Class<?>, TreeMap<Comparable, TableSplitPolicy<? extends Comparable>>> tableSplitPolicyMap = new HashMap<>();
+    {
+        addTableSplitPolicy(Integer.class, DefaultIntegerTableSplitPolicy.getInstance());
+        addTableSplitPolicy(Long.class, DefaultLongTableSplitPolicy.getInstance());
+        addTableSplitPolicy(String.class, DefaultStringTableSplitPolicy.getInstance());
+    }
+    /** 添加分表策略 */
+    private void addTableSplitPolicy(Class<?> idClass, TableSplitPolicy<? extends Comparable> tableSplitPolicy) {
+        tableSplitPolicyMap.computeIfAbsent(idClass, key -> new TreeMap<>()).put(tableSplitPolicy.getRange().getKey(), tableSplitPolicy);
+    }
+    /** 添加新的分表策略，添加前请清空默认值 */
+    public void addTableSplitPolicy(Class<?> idClass, TreeMap<Comparable, TableSplitPolicy<? extends Comparable>> treeMap) {
+        // 作用范围，包括最小值，不包括最大值
+        checkTableSplitPolicyTreeMap(treeMap);
+        tableSplitPolicyMap.put(idClass, treeMap);
+    }
+    /** 检查分表策略的作用范围是否重叠 */
+    private void checkTableSplitPolicyTreeMap(TreeMap<Comparable, TableSplitPolicy<? extends Comparable>> treeMap) {
+        Comparable lastValue = null;
+        for (TableSplitPolicy<? extends Comparable> policy : treeMap.values()) {
+            Pair<? extends Comparable, ? extends Comparable> policyRange = policy.getRange();
+            if (lastValue == null) {
+                lastValue = policyRange.getValue();
+            } else {
+                Comparable key = policyRange.getKey();
+                if (key.compareTo(lastValue) < 0) {
+                //if (policyRange.getKey() < lastValue) {
+                    throw new SscRuntimeException(String.format("The range of TableSplitPolicy is overlapping, value1:%s, value2:%s", key, lastValue));
+                }
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.hushaorui.ssc.config;
 
 /**
  * id生成策略
+ * @param <ID_TYPE> id属性的类型
  */
 public interface IdGeneratePolicy<ID_TYPE> {
     /**

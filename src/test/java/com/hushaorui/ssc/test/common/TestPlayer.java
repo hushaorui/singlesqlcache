@@ -5,6 +5,9 @@ import com.hushaorui.ssc.common.anno.FieldDesc;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.sql.Timestamp;
+import java.util.Date;
+
 /*
 drop table test_player;
 create table test_player (
@@ -32,8 +35,11 @@ public class TestPlayer {
     private Long thirdId;
     @FieldDesc(isNotUpdate = true, isNotNull = true)
     private Long createTime;
+    private Timestamp birthdayTime;
+    private Date primarySchoolStartDay;
     private Long lastLoginTime;
     private Long lastLoginIp;
+    //private TestAddress testAddress;
 
     // 该段不会保存
     @FieldDesc(noneSave = true)
