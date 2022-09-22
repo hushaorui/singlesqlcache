@@ -19,6 +19,9 @@ public class DefaultStringTableSplitPolicy implements TableSplitPolicy<String> {
     private DefaultStringTableSplitPolicy() {}
     @Override
     public int getTableIndex(String id, int maxTableCount) {
+        if (id == null) {
+            return 0;
+        }
         String md5Encode = SscStringUtils.md5Encode(id);
         return md5Encode.charAt(0) % maxTableCount;
     }

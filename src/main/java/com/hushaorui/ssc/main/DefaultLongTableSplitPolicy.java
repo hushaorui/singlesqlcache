@@ -18,7 +18,7 @@ public class DefaultLongTableSplitPolicy implements TableSplitPolicy<Long> {
     private DefaultLongTableSplitPolicy() {}
     @Override
     public int getTableIndex(Long id, int maxTableCount) {
-        return (int) (id % maxTableCount);
+        return id == null ? 0 : (int) (id % maxTableCount);
     }
 
     @Override

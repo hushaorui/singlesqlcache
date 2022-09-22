@@ -30,6 +30,11 @@ public class SingleSqlCacheConfig {
     private TableNameStyle tableNameStyle = TableNameStyle.LOWERCASE_UNDERLINE;
     /** 字段名风格 (没有指定字段名时使用) */
     private ColumnNameStyle columnNameStyle = ColumnNameStyle.LOWERCASE_UNDERLINE;
+    /** 唯一键辅助表的表名后缀 */
+    private String uniqueTableNameSuffix = "_assist_table";
+    /** 唯一键辅助表的id名称，如果和你的表字段名称重复，请重设此值 */
+    private String uniqueTableIdName = "assist_id";
+
     /** json数据转换器 */
     private JSONSerializer jsonSerializer = new DefaultJSONSerializer();
     /** java类型和表类型的映射 */

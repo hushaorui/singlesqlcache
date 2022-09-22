@@ -138,6 +138,20 @@ public class TableOperatorFactoryTest {
         }
     }
 
+    @Test
+    public void test_selectByUniqueName() {
+        try {
+            // 开启缓存来测试
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            TestPlayer select = new TestPlayer();
+            select.setUsername("张三");
+            TestPlayer player = operator.selectByUniqueName("username", select);
+            System.out.println(JSONArray.toJSONString(player));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private TestPlayer getTestPlayer() {
         TestPlayer player = new TestPlayer();
         player.setUsername("张三");

@@ -47,10 +47,10 @@ public class DataClassDesc {
     /** 是否使用id生成策略 */
     private boolean useIdGeneratePolicy;
 
-    public String getColumnByProp(String columnName) {
-        return propColumnMapping.getOrDefault(columnName, columnName);
+    public String getColumnByProp(String propName) {
+        return propColumnMapping.getOrDefault(propName, propName);
     }
-    public String getPropByColumn(String propName) {
-        return columnPropMapping.getOrDefault(propName, propName);
+    public String getPropByColumn(String columnName) {
+        return columnPropMapping.getOrDefault(columnName, columnName);
     }
 }

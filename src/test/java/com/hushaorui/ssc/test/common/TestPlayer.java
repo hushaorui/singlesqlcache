@@ -29,9 +29,9 @@ public class TestPlayer {
     private Long userId;
     @FieldDesc(columnType = "VARCHAR(128)", uniqueName = "username", isNotNull = true)
     private String username;
-    @FieldDesc(uniqueName = "thirdType_thirdId")
+    @FieldDesc(uniqueName = "third_type_third_id")
     private String thirdType;
-    @FieldDesc(uniqueName = "thirdType_thirdId")
+    @FieldDesc(uniqueName = "third_type_third_id")
     private Long thirdId;
     @FieldDesc(isNotUpdate = true, isNotNull = true)
     private Long createTime;

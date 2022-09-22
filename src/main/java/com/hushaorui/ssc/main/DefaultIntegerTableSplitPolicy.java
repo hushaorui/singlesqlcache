@@ -18,7 +18,7 @@ public class DefaultIntegerTableSplitPolicy implements TableSplitPolicy<Integer>
     private DefaultIntegerTableSplitPolicy() {}
     @Override
     public int getTableIndex(Integer id, int maxTableCount) {
-        return id % maxTableCount;
+        return id == null ? 0 : id % maxTableCount;
     }
 
     @Override

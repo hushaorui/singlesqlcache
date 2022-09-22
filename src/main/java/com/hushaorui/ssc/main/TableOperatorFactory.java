@@ -13,6 +13,7 @@ import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.util.SscStringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -66,9 +67,13 @@ public class TableOperatorFactory {
      * 所有的数据类描述
      */
     protected static final Map<Class<?>, SscTableInfo> tableInfoMapping = new HashMap<>();
-    /** 给用户操作的缓存类 */
+    /**
+     * 给用户操作的缓存类
+     */
     protected static final Map<Class<?>, Operator<?>> userOperatorMap = new HashMap<>();
-    /** 无缓存的操作类 */
+    /**
+     * 无缓存的操作类
+     */
     protected static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
     protected static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
 
@@ -84,10 +89,17 @@ public class TableOperatorFactory {
             saveSwitch = true;
             getSwitch = true;
             log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", globalConfig.getPersistenceIntervalTime(), globalConfig.getMaxInactiveTime()));
+            // 程序关闭前执行
+            Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
         } else {
             saveSwitch = false;
             getSwitch = false;
         }
+    }
+
+    private void beforeShutdown() {
+        log.info("程序关闭前执行");
+        close();
     }
 
     public TableOperatorFactory(JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
@@ -213,6 +225,7 @@ public class TableOperatorFactory {
             }
         };
     }
+
     /**
      * 关闭缓存
      */
@@ -423,11 +436,11 @@ public class TableOperatorFactory {
                     // 删除表
                     dropTable(sscTableInfo.getDropTableSql());
                     // 然后创建表
-                    createTable(sscTableInfo.getCreateTableSql());
+                    createTable(sscTableInfo.getCreateTableSql(), sscTableInfo.getUniqueCreateSqlMap());
                     break;
                 }
                 case CREATE_TABLE_IF_NOT_EXIST: {
-                    createTable(sscTableInfo.getCreateTableSql());
+                    createTable(sscTableInfo.getCreateTableSql(), sscTableInfo.getUniqueCreateSqlMap());
                     break;
                 }
                 /*case MODIFY_COLUMN_IF_UPDATE: {
@@ -489,20 +502,34 @@ public class TableOperatorFactory {
     private void dropTable(String[] dropTableSql) {
         for (String sql : dropTableSql) {
             jdbcTemplate.execute(sql);
-            log.info("执行删除表sql: " + sql);
+            log.info("删除表, sql: " + sql);
         }
     }
 
-    private void createTable(String[] createTableSql) {
+    private void createTable(String[] createTableSql, Map<String, String[]> uniqueCreateSqlMap) {
         for (String sql : createTableSql) {
             try {
                 jdbcTemplate.execute(sql);
-                log.info("执行创建表sql: " + sql);
+                log.info("创建表, sql: " + sql);
             } catch (Exception e) {
                 if (!e.getMessage().contains("already exists")) {
                     throw new SscRuntimeException(e);
                 }
             }
+        }
+        if (uniqueCreateSqlMap != null) {
+            uniqueCreateSqlMap.values().forEach(array -> {
+                for (String sql : array) {
+                    try {
+                        jdbcTemplate.execute(sql);
+                        log.info("创建辅助表, sql: " + sql);
+                    } catch (Exception e) {
+                        if (!e.getMessage().contains("already exists")) {
+                            throw new SscRuntimeException(e);
+                        }
+                    }
+                }
+            });
         }
     }
 
@@ -545,10 +572,11 @@ public class TableOperatorFactory {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
         return (Operator<T>) noCachedOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+            private DataClassDesc classDesc = sscTableInfo.getClassDesc();
             private RowMapper<T> rowMapper;
+
             @Override
             public void insert(Object object) {
-                DataClassDesc classDesc = sscTableInfo.getClassDesc();
                 Object id = getIdValueFromObject(classDesc, object);
                 if (id == null) {
                     if (classDesc.isUseIdGeneratePolicy()) {
@@ -586,7 +614,6 @@ public class TableOperatorFactory {
 
             @Override
             public void update(Object object) {
-                DataClassDesc classDesc = sscTableInfo.getClassDesc();
                 Object id = getIdValueFromObject(classDesc, object);
                 int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
@@ -597,7 +624,6 @@ public class TableOperatorFactory {
 
             @Override
             public void delete(Object object) {
-                DataClassDesc classDesc = sscTableInfo.getClassDesc();
                 Object id = getIdValueFromObject(classDesc, object);
                 int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
@@ -607,16 +633,12 @@ public class TableOperatorFactory {
 
             @Override
             public void delete(Serializable id) {
-                int tableIndex = getTableIndex(id, sscTableInfo.getClassDesc().getTableCount());
+                int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
                 jdbcTemplate.update(deleteSql, id);
             }
 
-            @Override
-            public Object selectById(Serializable id) {
-                DataClassDesc classDesc = sscTableInfo.getClassDesc();
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
-                String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
+            private RowMapper<T> getRowMapper() {
                 if (rowMapper == null) {
                     synchronized (this) {
                         if (rowMapper == null) {
@@ -645,23 +667,52 @@ public class TableOperatorFactory {
                                     }
                                     return (T) data;
                                 } catch (Exception e) {
-                                    throw new SscRuntimeException(String.format("select error! sql: [%s], id: %s", sql, id), e);
+                                    throw new SscRuntimeException(e);
                                 }
                             };
                         }
                     }
                 }
+                return rowMapper;
+            }
+
+            @Override
+            public Object selectById(Serializable id) {
+                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+                String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
-                    return jdbcTemplate.queryForObject(sql, rowMapper, id);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查不到数据时会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Object data) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
+                Object[] params = new Object[propNames.size()];
+                int index = 0;
+                for (String propName : propNames) {
+                    params[index ++] = getFieldValueFromObject(classDesc, propName, data);
+                }
+                try {
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
+                } catch (IncorrectResultSizeDataAccessException ignore) {
+                    // queryForObject 在查到数据数量不是1的时候会抛出此异常
                     return null;
                 }
             }
         });
     }
 
-    /** 将id设置到对象中去 */
+    /**
+     * 将id设置到对象中去
+     */
     private void setObjectId(Object object, Object id, DataClassDesc classDesc) {
         Method idSetMethod = classDesc.getPropSetMethods().get(classDesc.getIdPropName());
         try {
@@ -685,7 +736,7 @@ public class TableOperatorFactory {
 
             @Override
             public void insert(Object object) {
-                if (! saveSwitch) {
+                if (!saveSwitch) {
                     // 存储缓存已关闭，直接插入数据库
                     getNoCachedOperator(dataClass).insert((T) object);
                     return;
@@ -880,6 +931,12 @@ public class TableOperatorFactory {
             public Object selectById(Serializable id) {
                 return selectById(id, null);
             }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Object data) {
+                //  TODO
+                return null;
+            }
         });
     }
 
@@ -902,6 +959,15 @@ public class TableOperatorFactory {
             insertMethod.invoke(operator, value);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), JSONArray.toJSONString(value)), e);
+        }
+    }
+
+    private Object getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
+        Method getMethod = classDesc.getPropGetMethods().get(propName);
+        try {
+            return getMethod.invoke(object);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            throw new SscRuntimeException(String.format("Get %s value error in class: %s", propName, classDesc.getDataClass().getName()), e);
         }
     }
 
