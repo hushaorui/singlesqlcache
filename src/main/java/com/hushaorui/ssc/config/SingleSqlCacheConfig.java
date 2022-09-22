@@ -22,9 +22,9 @@ import java.util.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SingleSqlCacheConfig {
-    /**缓存默认保留时间(不使用后开始计时) 单位：毫秒，默认5分钟，如果设置为0或小于0，则表示关闭缓存 */
+    /**缓存默认最大闲置时间(不使用后开始计算) 单位：毫秒，默认5分钟，如果设置为0或小于0，则表示关闭缓存 */
     private long maxInactiveTime = 300000;
-    /** 缓存默认持久化间隔时间 单位：毫秒 */
+    /** 缓存默认持久化间隔时间，同时清理闲置缓存 单位：毫秒 */
     private long persistenceIntervalTime = 60000;
     /** 表名风格 (没有指定表名时使用) */
     private TableNameStyle tableNameStyle = TableNameStyle.LOWERCASE_UNDERLINE;

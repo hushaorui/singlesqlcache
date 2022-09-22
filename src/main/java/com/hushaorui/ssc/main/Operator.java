@@ -1,6 +1,7 @@
 package com.hushaorui.ssc.main;
 
 import java.io.Serializable;
+import java.util.function.Function;
 
 /**
  * 数据操作器
@@ -33,4 +34,6 @@ public interface Operator<DATA> {
      * 根据id查询
      */
     DATA selectById(Serializable id);
+
+    DATA selectById(Serializable id, Function<Serializable, DATA> insertFunction);
 }

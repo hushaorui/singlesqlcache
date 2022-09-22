@@ -17,7 +17,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Date;
 
-public class UniqueTableOperatorTest {
+public class TableOperatorFactoryTest {
     private JdbcTemplate jdbcTemplate;
     private TableOperatorFactory tableOperatorFactory;
     @Before
@@ -28,7 +28,7 @@ public class UniqueTableOperatorTest {
             jdbcTemplate = new JdbcTemplate(druidDataSource);
             SingleSqlCacheConfig config = new SingleSqlCacheConfig();
             // 关闭缓存
-            config.setMaxInactiveTime(0);
+            //config.setMaxInactiveTime(0);
             // 设置启动策略
             //config.setLaunchPolicy(SscLaunchPolicy.DROP_TABLE_AND_CRETE);
             tableOperatorFactory = new TableOperatorFactory(jdbcTemplate, config);
@@ -114,6 +114,30 @@ public class UniqueTableOperatorTest {
         }
     }
 
+    @Test
+    public void test_insert_batch() {
+        try {
+            // 开启缓存来测试
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            Long id = null;
+            for (int i = 0; i < 10; i++) {
+                long now = System.currentTimeMillis();
+                TestPlayer testPlayer = getTestPlayer("张三" + i, "extra" + i, "morlia" + i, 1000000L + i, new Timestamp(now), new Date());
+                operator.insert(testPlayer);
+                if (id == null) {
+                    id = testPlayer.getUserId();
+                }
+            }
+            TestPlayer player = operator.selectById(id);
+            System.out.println(JSONArray.toJSONString(player));
+            tableOperatorFactory.close();
+            TestPlayer player2 = operator.selectById(id);
+            System.out.println(JSONArray.toJSONString(player2));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private TestPlayer getTestPlayer() {
         TestPlayer player = new TestPlayer();
         player.setUsername("张三");
@@ -124,6 +148,19 @@ public class UniqueTableOperatorTest {
         player.setThirdId(1000000L);
         player.setBirthdayTime(new Timestamp(now));
         player.setPrimarySchoolStartDay(new Date());
+        return getTestPlayer("张三", "extra111", "morlia", 1000000L, new Timestamp(now), new Date());
+    }
+
+    private TestPlayer getTestPlayer(String username, String extraString, String thirdType, Long thirdId, Timestamp birthDayTime, Date primarySchoolStartDay) {
+        TestPlayer player = new TestPlayer();
+        player.setUsername(username);
+        long now = System.currentTimeMillis();
+        player.setCreateTime(now);
+        player.setExtraString(extraString);
+        player.setThirdType(thirdType);
+        player.setThirdId(thirdId);
+        player.setBirthdayTime(birthDayTime);
+        player.setPrimarySchoolStartDay(primarySchoolStartDay);
         return player;
     }
 

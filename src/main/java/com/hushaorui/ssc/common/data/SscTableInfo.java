@@ -47,9 +47,11 @@ public class SscTableInfo {
         Method idGetMethod = classDesc.getPropGetMethods().get(idPropName);
         // id属性的类型
         idJavaType = idGetMethod.getReturnType();
-        IdGeneratePolicy<?> idGeneratePolicy = config.getIdGeneratePolicyMap().get(idJavaType);
-        if (idGeneratePolicy == null) {
-            throw new SscRuntimeException(String.format("The class: %s is not supported as an id", idJavaType.getName()));
+        if (classDesc.isUseIdGeneratePolicy()) {
+            IdGeneratePolicy<?> idGeneratePolicy = config.getIdGeneratePolicyMap().get(idJavaType);
+            if (idGeneratePolicy == null) {
+                throw new SscRuntimeException(String.format("The class: %s is not supported as an id", idJavaType.getName()));
+            }
         }
         TreeMap<Comparable, TableSplitPolicy<? extends Comparable>> tableSplitPolicyTreeMap = config.getTableSplitPolicyMap().get(idJavaType);
         if (tableSplitPolicyTreeMap == null) {
@@ -77,7 +79,7 @@ public class SscTableInfo {
             }
         }
         for (int i = 0; i < createTableSql.length; i++) {
-            StringBuilder create = new StringBuilder("create table ");
+            StringBuilder create = new StringBuilder("create table if not exists ");
             String indexString = String.valueOf(i);
             StringBuilder realTableNameBuilder = new StringBuilder(classDesc.getTableName()).append("_");
             for (int j = indexString.length(); j < numberLength; j++) {

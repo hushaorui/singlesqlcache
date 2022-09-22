@@ -26,6 +26,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 @Slf4j
 public class TableOperatorFactory {
@@ -46,9 +47,9 @@ public class TableOperatorFactory {
      */
     private TimerTask timerTask;
     /**
-     * 定时器名称
+     * 工厂名称
      */
-    private String timerName;
+    private String name;
     /**
      * 数据库的数据缓存 key1:pojoClass, key2:idValue, value:cacheObject
      */
@@ -71,32 +72,41 @@ public class TableOperatorFactory {
     protected static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
     protected static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
 
-    public TableOperatorFactory(JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
+    public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
         this.jdbcTemplate = jdbcTemplate;
         this.globalConfig = globalConfig;
         if (globalConfig.getMaxInactiveTime() > 0) {
             // 开启缓存
-            timerName = TableOperatorFactory.class.getSimpleName() + "Timer";
-            timer = new Timer(timerName);
+            this.name = TableOperatorFactory.class.getSimpleName() + "-" + name + "-Timer";
+            timer = new Timer(this.name);
             // 默认 60000 (一分钟)
             timer.schedule(timerTask = getTimerTask(), globalConfig.getPersistenceIntervalTime(), globalConfig.getPersistenceIntervalTime());
             saveSwitch = true;
             getSwitch = true;
+            log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", globalConfig.getPersistenceIntervalTime(), globalConfig.getMaxInactiveTime()));
         } else {
             saveSwitch = false;
             getSwitch = false;
         }
     }
 
+    public TableOperatorFactory(JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
+        this("default", jdbcTemplate, globalConfig);
+    }
+
+    public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate) {
+        this(name, jdbcTemplate, new SingleSqlCacheConfig());
+    }
+
     public TableOperatorFactory(JdbcTemplate jdbcTemplate) {
-        this(jdbcTemplate, new SingleSqlCacheConfig());
+        this("default", jdbcTemplate, new SingleSqlCacheConfig());
     }
 
     private TimerTask getTimerTask() {
         return new TimerTask() {
             @Override
             public void run() {
-                log.debug(String.format("%s 定时任务执行开始", timerName));
+                log.info(String.format("%s 定时任务执行开始", name));
                 final long now = System.currentTimeMillis();
                 try {
                     idCacheMap.forEach((objectClass, value) -> value.entrySet().removeIf(cacheEntry -> {
@@ -124,8 +134,7 @@ public class TableOperatorFactory {
                                         case INSERT: {
                                             option = "insert";
                                             try {
-                                                Method insertMethod = noCachedOperator.getClass().getMethod(option, optionObject.getClass());
-                                                insertMethod.invoke(noCachedOperator, optionObject);
+                                                doInsert(noCachedOperator, optionObject);
                                                 newStatus = CacheStatus.AFTER_INSERT;
                                             } catch (Exception e) {
                                                 log.error(String.format("缓存插入数据失败，cache: %s", JSONArray.toJSONString(cache)), e);
@@ -137,8 +146,7 @@ public class TableOperatorFactory {
                                         case UPDATE: {
                                             option = "update";
                                             try {
-                                                Method insertMethod = noCachedOperator.getClass().getMethod(option, optionObject.getClass());
-                                                insertMethod.invoke(noCachedOperator, optionObject);
+                                                doUpdate(noCachedOperator, optionObject);
                                                 newStatus = CacheStatus.AFTER_UPDATE;
                                             } catch (Exception e) {
                                                 log.error(String.format("缓存更新数据失败，cache: %s", JSONArray.toJSONString(cache)), e);
@@ -159,7 +167,7 @@ public class TableOperatorFactory {
                                         objectClass.getName(), JSONArray.toJSONString(optionObject), option), e);
                             }
                         }
-                        // 清理超过保留时间的缓存数据
+                        // 清理超过最大闲置时间的缓存数据
                         boolean remove = cache.getLastUseTime() + globalConfig.getMaxInactiveTime() < now;
                         if (remove) {
                             log.info(String.format("因长时间未使用，删除缓存, class:%s, id:%s", objectClass.getName(), cacheEntry.getKey()));
@@ -201,7 +209,7 @@ public class TableOperatorFactory {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.debug(String.format("%s 定时任务执行结束", timerName));
+                log.info(String.format("%s 定时任务执行结束", name));
             }
         };
     }
@@ -209,6 +217,7 @@ public class TableOperatorFactory {
      * 关闭缓存
      */
     public void close() {
+        log.warn("开始关闭缓存");
         // 先关闭存储缓存
         saveSwitch = false;
         // 取消任务
@@ -225,7 +234,7 @@ public class TableOperatorFactory {
         //findAllFieldCacheMap.clear();
         // 最后关闭取缓存开关，保证缓存中的数据都同步到了数据库后才开始从数据库中直接拿数据
         getSwitch = false;
-        log.warn("已关闭缓存");
+        log.warn("缓存已关闭");
     }
 
     private SscTableInfo getTableInfoNotNull(Class<?> dataClass) {
@@ -278,6 +287,8 @@ public class TableOperatorFactory {
 
             // id字段的名称
             String idPropName = null;
+            // 使用使用id生成策略
+            Boolean idIsAuto = null;
             Class<?> tempClass = clazz;
             while (!Object.class.equals(tempClass)) {
                 Field[] declaredFields = tempClass.getDeclaredFields();
@@ -304,6 +315,7 @@ public class TableOperatorFactory {
                                 throw new SscRuntimeException(String.format("ID field can only have one in class: %s", clazz.getName()));
                             }
                             idPropName = propName;
+                            idIsAuto = fieldDesc.isAuto();
                         }
                         String value = fieldDesc.value();
                         if (value.length() == 0) {
@@ -379,6 +391,8 @@ public class TableOperatorFactory {
             if (idPropName == null) {
                 // 没有标注id，则第一个字段为id
                 idPropName = propColumnMapping.keySet().iterator().next();
+                // 默认使用id生成策略
+                idIsAuto = true;
             }
             dataClassDesc.setTableCount(tableCount);
             dataClassDesc.setTableName(tableName);
@@ -388,6 +402,7 @@ public class TableOperatorFactory {
             dataClassDesc.setPropGetMethods(propGetMethods);
             dataClassDesc.setPropSetMethods(propSetMethods);
             dataClassDesc.setIdPropName(idPropName);
+            dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
             dataClassDesc.setNotNullProps(notNullProps);
             dataClassDesc.setPropDefaultValues(propDefaultValues);
             dataClassDesc.setUniqueProps(uniqueProps);
@@ -533,15 +548,40 @@ public class TableOperatorFactory {
             private RowMapper<T> rowMapper;
             @Override
             public void insert(Object object) {
-                IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
                 DataClassDesc classDesc = sscTableInfo.getClassDesc();
-                // 根据id生成策略获取新的id
-                Object id = idGeneratePolicy.getId(clazz);
-                setObjectId(object, id, classDesc);
+                Object id = getIdValueFromObject(classDesc, object);
+                if (id == null) {
+                    if (classDesc.isUseIdGeneratePolicy()) {
+                        IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
+                        // 根据id生成策略获取新的id
+                        id = idGeneratePolicy.getId(clazz);
+                        setObjectId(object, id, classDesc);
+                    } else {
+                        throw new SscRuntimeException("插入数据时，id为null且不使用id生成策略, class: " + clazz.getName());
+                    }
+                }
                 int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String insertSql = sscTableInfo.getInsertSql()[tableIndex];
                 Object[] params = getInsertParamArrayFromObject(classDesc, object);
+                log.info(String.format("执行插入语句：%s, id:%s", insertSql, id));
                 jdbcTemplate.update(insertSql, params);
+            }
+
+            @Override
+            public Object selectById(Serializable id, Function<Serializable, Object> insertFunction) {
+                Object object = selectById(id);
+                if (object != null) {
+                    return object;
+                }
+                if (insertFunction == null) {
+                    return null;
+                }
+                Object apply = insertFunction.apply(id);
+                if (apply == null) {
+                    return null;
+                }
+                insert(apply);
+                return apply;
             }
 
             @Override
@@ -551,6 +591,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
                 Object[] params = getUpdateParamArrayFromObject(classDesc, object);
+                log.info(String.format("执行更新语句：%s, id:%s", updateSql, id));
                 jdbcTemplate.update(updateSql, params);
             }
 
@@ -560,6 +601,7 @@ public class TableOperatorFactory {
                 Object id = getIdValueFromObject(classDesc, object);
                 int tableIndex = getTableIndex(id, classDesc.getTableCount());
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
+                log.info(String.format("执行删除语句：%s, id:%s", deleteSql, id));
                 jdbcTemplate.update(deleteSql, id);
             }
 
@@ -639,6 +681,8 @@ public class TableOperatorFactory {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
         return (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+            private final DataClassDesc classDesc = sscTableInfo.getClassDesc();
+
             @Override
             public void insert(Object object) {
                 if (! saveSwitch) {
@@ -646,22 +690,24 @@ public class TableOperatorFactory {
                     getNoCachedOperator(dataClass).insert((T) object);
                     return;
                 }
-                DataClassDesc classDesc = sscTableInfo.getClassDesc();
-                Serializable id = getIdValueFromObject(classDesc, object);
-                insertOrUpdate(id, object, classDesc);
+                insertOrUpdate(getIdValueFromObject(classDesc, object), object);
             }
 
-            private void insertOrUpdate(Serializable id, Object object, DataClassDesc classDesc) {
+            private void insertOrUpdate(Serializable id, Object object) {
                 if (object == null) {
                     log.warn("尝试添加为null的缓存，添加失败");
                     return;
                 }
                 Class<?> objectClass = object.getClass();
                 if (id == null) {
-                    IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
-                    // 根据id生成策略获取新的id
-                    id = (Serializable) idGeneratePolicy.getId(clazz);
-                    setObjectId(object, id, classDesc);
+                    if (classDesc.isUseIdGeneratePolicy()) {
+                        IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
+                        // 根据id生成策略获取新的id
+                        id = (Serializable) idGeneratePolicy.getId(clazz);
+                        setObjectId(object, id, classDesc);
+                    } else {
+                        id = getIdValueFromObject(classDesc, object);
+                    }
                 }
                 insertOrUpDateOrDelete(objectClass, id, object, CacheStatus.INSERT);
             }
@@ -675,7 +721,7 @@ public class TableOperatorFactory {
                         if (cache != null) {
                             synchronized (cache) {
                                 cache.setCacheStatus(newStatus);
-                                log.debug(String.format("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object));
+                                log.info(String.format("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object));
                             }
                         }
                     }
@@ -728,7 +774,7 @@ public class TableOperatorFactory {
                     cache.setLastModifyTime(now);
                     cache.setLastUseTime(now);
                 }
-                log.debug(String.format("%s缓存, class:%s, id: %s, object: %s", newStatus, objectClass.getName(), id, object));
+                log.info(String.format("%s缓存, class:%s, id: %s", cache.getCacheStatus(), objectClass.getName(), id));
             }
 
             @Override
@@ -737,13 +783,13 @@ public class TableOperatorFactory {
                     log.warn("尝试更新为null的缓存，更新失败");
                     return;
                 }
-                Serializable id = getIdValueFromObject(sscTableInfo.getClassDesc(), object);
+                Serializable id = getIdValueFromObject(classDesc, object);
                 insertOrUpDateOrDelete(clazz, id, object, CacheStatus.UPDATE);
             }
 
             @Override
             public void delete(Object object) {
-                Serializable id = getIdValueFromObject(sscTableInfo.getClassDesc(), object);
+                Serializable id = getIdValueFromObject(classDesc, object);
                 insertOrUpDateOrDelete(clazz, id, null, CacheStatus.AFTER_DELETE);
             }
 
@@ -753,27 +799,42 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public Object selectById(Serializable id) {
+            public Object selectById(Serializable id, Function<Serializable, Object> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
-                    return getNoCachedOperator(clazz).selectById(id);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
+                    Operator<?> noCachedOperator = getNoCachedOperator(clazz);
+                    Object value = noCachedOperator.selectById(id);
+                    if (value == null) {
+                        synchronized (SscStringUtils.getLock(id, clazz)) {
+                            value = noCachedOperator.selectById(id);
+                            if (value == null && insertFunction != null) {
+                                value = insertFunction.apply(id);
+                                if (value != null) {
+                                    doInsert(noCachedOperator, value);
+                                }
+                            }
+                        }
+                    }
+                    return value;
                 }
                 Map<Serializable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.debug(String.format("未找到缓存，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
+                    log.info(String.format("未找到缓存，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedOperator(clazz);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
                         synchronized (SscStringUtils.getLock(id, clazz)) {
-                            // 再查一次，确认
                             value = noCachedOperator.selectById(id);
-                            if (value == null) {
-                                delete(id);
-                            } else {
-                                insertOrUpDateOrDelete(clazz, id, value, CacheStatus.AFTER_INSERT);
+                            if (value == null && insertFunction != null) {
+                                value = insertFunction.apply(id);
+                                if (value == null) {
+                                    insertOrUpDateOrDelete(clazz, id, null, CacheStatus.AFTER_DELETE);
+                                } else {
+                                    insertOrUpDateOrDelete(clazz, id, value, CacheStatus.INSERT);
+                                }
                             }
                         }
                     }
@@ -781,14 +842,67 @@ public class TableOperatorFactory {
                 } else {
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
-                    if (cache.getCacheStatus().isDelete()) {
-                        // 该数据原本需要删除
-                        return null;
+                    if (cache.getCacheStatus().isDelete() && insertFunction != null) {
+                        synchronized (cache) {
+                            // 该数据原本需要删除
+                            if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
+                                T newInstance = (T) insertFunction.apply(id);
+                                cache.setObjectInstance(newInstance);
+                                // 预备删除，转为更新
+                                cache.setCacheStatus(CacheStatus.UPDATE);
+                                return newInstance;
+                            } else if (CacheStatus.AFTER_DELETE.equals(cache.getCacheStatus())) {
+                                // 已经删除了，这里需要插入
+                                T newInstance = (T) insertFunction.apply(id);
+                                cache.setObjectInstance(newInstance);
+                                cache.setCacheStatus(CacheStatus.INSERT);
+                                return newInstance;
+                            }
+                        }
                     }
-                    return cache.getObjectInstance();
+                    Object objectInstance = cache.getObjectInstance();
+                    if (objectInstance == null && insertFunction != null) {
+                        // 这里可能永远不会运行
+                        synchronized (cache) {
+                            objectInstance = cache.getObjectInstance();
+                            if (objectInstance == null) {
+                                objectInstance = insertFunction.apply(id);
+                                cache.setObjectInstance(objectInstance);
+                                cache.setCacheStatus(CacheStatus.INSERT);
+                            }
+                        }
+                    }
+                    return objectInstance;
                 }
             }
+
+            @Override
+            public Object selectById(Serializable id) {
+                return selectById(id, null);
+            }
         });
+    }
+
+    private void doUpdate(Operator<?> operator, Object value) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
+            Method insertMethod = operatorClass.getMethod("update", genericType);
+            insertMethod.invoke(operator, value);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("Update error! operator class: %s, value: %s", operator.getClass().getName(), JSONArray.toJSONString(value)), e);
+        }
+    }
+
+    private void doInsert(Operator<?> operator, Object value) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
+            Method insertMethod = operatorClass.getMethod("insert", genericType);
+            insertMethod.invoke(operator, value);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), JSONArray.toJSONString(value)), e);
+        }
     }
 
     private Serializable getIdValueFromObject(DataClassDesc classDesc, Object object) {

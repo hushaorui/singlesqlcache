@@ -44,6 +44,9 @@ public class DataClassDesc {
     /** id字段的名称 */
     private String idPropName;
 
+    /** 是否使用id生成策略 */
+    private boolean useIdGeneratePolicy;
+
     public String getColumnByProp(String columnName) {
         return propColumnMapping.getOrDefault(columnName, columnName);
     }

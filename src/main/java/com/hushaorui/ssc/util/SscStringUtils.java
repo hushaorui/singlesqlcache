@@ -1,8 +1,10 @@
 package com.hushaorui.ssc.util;
 
 import com.sun.org.apache.xerces.internal.impl.dv.util.HexBin;
+import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
@@ -105,5 +107,31 @@ public abstract class SscStringUtils {
      */
     public static String getLock(Object id, Class<?> dataType) {
         return (id + dataType.getSimpleName()).intern();
+    }
+
+    /** 获取类的泛型 */
+    public static <T> Class<T> getGenericType(Class<T> clazz, int index) {
+        try {
+            Type[] genericInterfaces = clazz.getGenericInterfaces();
+            Type firstType;
+            if (genericInterfaces.length == 0) {
+                firstType = clazz.getGenericSuperclass();
+            } else {
+                firstType = genericInterfaces[0];
+            }
+            if (firstType instanceof Class) {
+                firstType = ((Class) firstType).getGenericInterfaces()[0];
+            }
+            ParameterizedTypeImpl parameterizedType = (ParameterizedTypeImpl) firstType;
+            Type[] actualTypeArguments = parameterizedType.getActualTypeArguments();
+            if (index >= actualTypeArguments.length) {
+                index = actualTypeArguments.length - 1;
+            }
+            Type type = actualTypeArguments[index];
+            return (Class<T>) Class.forName(type.getTypeName());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 }
