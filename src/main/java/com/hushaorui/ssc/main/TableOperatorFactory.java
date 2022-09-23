@@ -7,6 +7,7 @@ import com.hushaorui.ssc.common.data.DataClassDesc;
 import com.hushaorui.ssc.common.data.SscTableInfo;
 import com.hushaorui.ssc.common.em.CacheStatus;
 import com.hushaorui.ssc.config.IdGeneratePolicy;
+import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.config.TableSplitPolicy;
 import com.hushaorui.ssc.exception.SscRuntimeException;
@@ -55,6 +56,10 @@ public class TableOperatorFactory {
      * 数据库的数据缓存 key1:pojoClass, key2:idValue, value:cacheObject
      */
     private Map<Class<?>, Map<Serializable, ObjectInstanceCache>> idCacheMap = new ConcurrentHashMap<>();
+    /**
+     * 针对唯一字段的数据缓存 key1:pojoClass, key2:uniqueFieldName, key3:uniqueFieldValue, value:cacheObject
+     */
+    private Map<Class<?>, Map<String, Map<Object, ObjectInstanceCache>>> uniqueFieldCacheMap = new ConcurrentHashMap<>();
     /**
      * 存入缓存的开关，全局性质，控制所有
      */
@@ -186,13 +191,13 @@ public class TableOperatorFactory {
                         }
                         return remove;
                     }));
-                    /*uniqueFieldCacheMap.entrySet().removeIf(entry1 -> {
+                    uniqueFieldCacheMap.entrySet().removeIf(entry1 -> {
                         Map<String, Map<Object, ObjectInstanceCache>> outerMap = entry1.getValue();
                         outerMap.entrySet().removeIf(entry2 -> {
                             Map<Object, ObjectInstanceCache> innerMap = entry2.getValue();
                             innerMap.entrySet().removeIf(entry -> {
                                 long lastUseTime = entry.getValue().getLastUseTime();
-                                boolean delete = lastUseTime == 0 || lastUseTime + maxInactiveTime < now;
+                                boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
                                     log.info(String.format("因长时间未使用，删除(unique)缓存, class:%s,uniqueName:%s,uniqueValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
                                 }
@@ -201,7 +206,7 @@ public class TableOperatorFactory {
                             return innerMap.isEmpty();
                         });
                         return outerMap.isEmpty();
-                    });*/
+                    });
                     /*findAllFieldCacheMap.entrySet().removeIf(entry1 -> {
                         Map<String, Map<Object, DataIdCache>> map1 = entry1.getValue();
                         map1.entrySet().removeIf(entry2 -> {
@@ -694,11 +699,17 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
+                int size = propNames.size();
+                int tableCount = classDesc.getTableCount();
                 String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
-                Object[] params = new Object[propNames.size()];
+                Object[] params = new Object[size * tableCount];
                 int index = 0;
                 for (String propName : propNames) {
-                    params[index ++] = getFieldValueFromObject(classDesc, propName, data);
+                    params[index++] = getFieldValueFromObject(classDesc, propName, data);
+                }
+                for (int i = 1; i < tableCount; i++) {
+                    params[index] = params[index % size];
+                    index ++;
                 }
                 try {
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
@@ -789,7 +800,9 @@ public class TableOperatorFactory {
                         cache.setObjectInstance(object);
                         if (cache.getLastModifyTime() == 0) {
                             // == 0的时候为该cache对象第一次创建的时候，可能需要判断唯一键
-                            // TODO 唯一键的缓存
+                            // 唯一键的缓存
+                            // 尝试获取数据对象中的唯一字段(或联合字段)的值
+                            addUniqueValueCache(classDesc, object, cache);
                             // TODO 条件查询的缓存
                         }
                     }
@@ -934,10 +947,136 @@ public class TableOperatorFactory {
 
             @Override
             public Object selectByUniqueName(String uniqueName, Object data) {
-                //  TODO
-                return null;
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", clazz.getName(), uniqueName, data));
+                    return doSelectByUniqueName(getNoCachedOperator(clazz), uniqueName, data);
+                }
+
+                Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
+                if (uniqueValue == null) {
+                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", clazz.getName(), uniqueName, data));
+                    return null;
+                }
+                Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
+                ObjectInstanceCache cache = cacheMap.get(uniqueValue);
+                if (cache == null) {
+                    log.info(String.format("未找到缓存，直接查询数据库, class:%s, uniqueName:%s, key:%s", clazz.getName(), uniqueName, data));
+                    // 缓存击穿，查询数据库
+                    Operator<?> noCachedOperator = getNoCachedOperator(clazz);
+                    Object value = doSelectByUniqueName(noCachedOperator, uniqueName, data);
+                    // 如果没有id，无法放入缓存
+                    if (value == null) {
+                        // 防止击穿
+                        addEmptyCacheObject(clazz, uniqueName, uniqueValue);
+                    } else {
+                        Serializable id = getIdValueFromObject(classDesc, value);
+                        if (id != null) {
+                            // 添加id缓存
+                            insertOrUpDateOrDelete(clazz, id, value, CacheStatus.AFTER_INSERT);
+                        }
+                    }
+                    return value;
+                } else {
+                    if (cache.getCacheStatus().isDelete()) {
+                        // 该对象需要删除或已被删除
+                        return null;
+                    }
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
+                    return cache.getObjectInstance();
+                }
             }
         });
+    }
+
+    /**
+     * 获取数据对象的所有唯一对象的值
+     * @param classDesc 数据描述对象
+     * @param object 数据对象
+     */
+    private void addUniqueValueCache(DataClassDesc classDesc, Object object, ObjectInstanceCache cache) {
+        if (object == null) {
+            return;
+        }
+        Map<String, Set<String>> uniqueProps = classDesc.getUniqueProps();
+        if (uniqueProps.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Set<String>> entry : uniqueProps.entrySet()) {
+            try {
+                Object uniqueValue = getUniqueValueByUniqueName(classDesc, entry.getValue(), object);
+                Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(classDesc.getDataClass(), key2 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(entry.getKey(), key -> new ConcurrentHashMap<>());
+                // 放入唯一字段
+                uniqueMap.putIfAbsent(uniqueValue, cache);
+            } catch (Exception e) {
+                log.error(String.format("获取数据的唯一字段值失败(getUniqueValue), classDesc:%s", JSONArray.toJSONString(classDesc)));
+            }
+        }
+    }
+
+    /**
+     * 在根据唯一键查找时从缓存和数据库中均未找到，则将创建一个缓存对象，放入集合，防止击穿
+     *
+     * @param objectClass 数据类的class
+     * @param uniqueName  唯一键的名称
+     * @param uniqueValue 唯一键计算后的值
+     */
+    private void addEmptyCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue) {
+        Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(objectClass, key2 -> new ConcurrentHashMap<>())
+                .computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
+        ObjectInstanceCache cache = new ObjectInstanceCache();
+        cache.setCacheStatus(CacheStatus.AFTER_DELETE);
+        long now = System.currentTimeMillis();
+        cache.setLastUseTime(now);
+        uniqueMap.putIfAbsent(uniqueValue, cache);
+    }
+
+    private Object getUniqueValueByUniqueName(DataClassDesc classDesc, Set<String> propNames, Object data) {
+        int size = propNames.size();
+        if (size == 1) {
+            return getFieldValueFromObject(classDesc, propNames.iterator().next(), data);
+        } else {
+            // 联合字段
+            StringBuilder builder1 = new StringBuilder();
+            StringBuilder builder2 = new StringBuilder();
+            int halfSize = size / 2;
+            int i = 0;
+            JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
+            for (String propName : propNames) {
+                Object fieldValue = getFieldValueFromObject(classDesc, propName, data);
+                ;
+                if (i <= halfSize) {
+                    builder1.append(jsonSerializer.toJsonString(fieldValue));
+                } else {
+                    builder2.append(jsonSerializer.toJsonString(fieldValue));
+                }
+                i++;
+            }
+            return getStringFromBuilder(builder1, builder2);
+        }
+    }
+
+    private String getStringFromBuilder(StringBuilder builder1, StringBuilder builder2) {
+        // 将长度控制在2个md5, 一个太容易碰撞
+        return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
+    }
+
+    private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
+        //selectByUniqueName
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
+            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, genericType);
+            return insertMethod.invoke(operator, uniqueName, data);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
+        }
     }
 
     private void doUpdate(Operator<?> operator, Object value) {
@@ -947,7 +1086,7 @@ public class TableOperatorFactory {
             Method insertMethod = operatorClass.getMethod("update", genericType);
             insertMethod.invoke(operator, value);
         } catch (Exception e) {
-            throw new SscRuntimeException(String.format("Update error! operator class: %s, value: %s", operator.getClass().getName(), JSONArray.toJSONString(value)), e);
+            throw new SscRuntimeException(String.format("Update error! operator class: %s, value: %s", operator.getClass().getName(), value), e);
         }
     }
 
@@ -958,7 +1097,7 @@ public class TableOperatorFactory {
             Method insertMethod = operatorClass.getMethod("insert", genericType);
             insertMethod.invoke(operator, value);
         } catch (Exception e) {
-            throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), JSONArray.toJSONString(value)), e);
+            throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), value), e);
         }
     }
 

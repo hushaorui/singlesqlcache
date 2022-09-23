@@ -4,6 +4,7 @@ import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -24,6 +25,7 @@ create table test_player (
 @Getter
 @Setter
 @DataClass(tableCount = 4)
+@ToString
 public class TestPlayer {
     @FieldDesc(isId = true)
     private Long userId;
