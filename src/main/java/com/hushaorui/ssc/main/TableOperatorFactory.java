@@ -707,7 +707,8 @@ public class TableOperatorFactory {
                 for (String propName : propNames) {
                     params[index++] = getFieldValueFromObject(classDesc, propName, data);
                 }
-                for (int i = 1; i < tableCount; i++) {
+                int leftParamSize = (tableCount - 1) * size;
+                for (int i = 0; i < leftParamSize; i++) {
                     params[index] = params[index % size];
                     index ++;
                 }
@@ -972,12 +973,15 @@ public class TableOperatorFactory {
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
-                        addEmptyCacheObject(clazz, uniqueName, uniqueValue);
+                        addUniqueFieldCacheObject(clazz, uniqueName, uniqueValue, CacheStatus.AFTER_DELETE, null);
                     } else {
                         Serializable id = getIdValueFromObject(classDesc, value);
                         if (id != null) {
-                            // 添加id缓存
+                            // 添加id缓存(同时也会添加唯一键缓存)
                             insertOrUpDateOrDelete(clazz, id, value, CacheStatus.AFTER_INSERT);
+                        } else {
+                            // 没有id(一般不可能存在这种情况)
+                            addUniqueFieldCacheObject(clazz, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
                         }
                     }
                     return value;
@@ -1027,11 +1031,12 @@ public class TableOperatorFactory {
      * @param uniqueName  唯一键的名称
      * @param uniqueValue 唯一键计算后的值
      */
-    private void addEmptyCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue) {
+    private void addUniqueFieldCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue, CacheStatus cacheStatus, Object data) {
         Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(objectClass, key2 -> new ConcurrentHashMap<>())
                 .computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
         ObjectInstanceCache cache = new ObjectInstanceCache();
-        cache.setCacheStatus(CacheStatus.AFTER_DELETE);
+        cache.setCacheStatus(cacheStatus);
+        cache.setObjectInstance(data);
         long now = System.currentTimeMillis();
         cache.setLastUseTime(now);
         uniqueMap.putIfAbsent(uniqueValue, cache);

@@ -144,10 +144,31 @@ public class TableOperatorFactoryTest {
             // 开启缓存来测试
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
             TestPlayer select = new TestPlayer();
+            select.setThirdType("morlia1");
+            select.setThirdId(1000001L);
+            TestPlayer player = operator.selectByUniqueName("third_type_third_id", select);
+            System.out.println(player == null ? null : player.hashCode());
+            // 第二次能够使用缓存
+            player = operator.selectByUniqueName("third_type_third_id", select);
+            System.out.println(player == null ? null : player.hashCode());
+            System.out.println(JSONArray.toJSONString(player));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByUniqueName_2() {
+        try {
+            // 开启缓存来测试
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            TestPlayer select = new TestPlayer();
             select.setUsername("张三1");
             TestPlayer player = operator.selectByUniqueName("username", select);
+            System.out.println(player == null ? null : player.hashCode());
             // 第二次能够使用缓存
             player = operator.selectByUniqueName("username", select);
+            System.out.println(player == null ? null : player.hashCode());
             System.out.println(JSONArray.toJSONString(player));
         } catch (Exception e) {
             e.printStackTrace();
