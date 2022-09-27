@@ -1,6 +1,8 @@
 package com.hushaorui.ssc.main;
 
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -52,4 +54,10 @@ public interface Operator<DATA> {
      */
     DATA selectByUniqueName(String uniqueName, DATA data);
 
+    /**
+     * 根据条件查询数据
+     * @param conditionMap 条件集合 key: 类属性名或表字段名 ,value: 值
+     * @return 数据集合
+     */
+    List<DATA> selectByCondition(HashMap<String, Object> conditionMap);
 }

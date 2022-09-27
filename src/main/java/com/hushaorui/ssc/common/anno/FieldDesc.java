@@ -30,4 +30,6 @@ public @interface FieldDesc {
     boolean isNotUpdate() default false;
     /** 是否需要缓存，默认是需要的 */
     boolean cached() default true;
+    /** 多字段条件查询，只有标注的才会产生缓存 */
+    String[] selectorNames() default "";
 }

@@ -16,6 +16,8 @@ import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 
 public class TableOperatorFactoryTest {
     private JdbcTemplate jdbcTemplate;
@@ -170,6 +172,21 @@ public class TableOperatorFactoryTest {
             player = operator.selectByUniqueName("username", select);
             System.out.println(player == null ? null : player.hashCode());
             System.out.println(JSONArray.toJSONString(player));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByCondition_1() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            HashMap<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("username", "张三1");
+            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(JSONArray.toJSONString(testPlayers));
+            testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(JSONArray.toJSONString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
         }

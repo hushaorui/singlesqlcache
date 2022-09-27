@@ -1,6 +1,5 @@
 package com.hushaorui.ssc.main;
 
-import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
@@ -14,7 +13,6 @@ import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.util.SscStringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -35,11 +33,11 @@ public class TableOperatorFactory {
     /**
      * 核心配置
      */
-    protected SingleSqlCacheConfig globalConfig;
+    private SingleSqlCacheConfig globalConfig;
     /**
      * 数据库操作类
      */
-    protected JdbcTemplate jdbcTemplate;
+    private JdbcTemplate jdbcTemplate;
     /**
      * 定时器
      */
@@ -61,6 +59,11 @@ public class TableOperatorFactory {
      */
     private Map<Class<?>, Map<String, Map<Object, ObjectInstanceCache>>> uniqueFieldCacheMap = new ConcurrentHashMap<>();
     /**
+     * 针对多字段条件查询的数据缓存 key1:pojoClass, key2:selectorName, key3:selectorValue, value:cacheObject
+     */
+    private Map<Class<?>, Map<String, Map<Object, ObjectListCache>>> conditionCacheMap = new ConcurrentHashMap<>();
+
+    /**
      * 存入缓存的开关，全局性质，控制所有
      */
     private boolean saveSwitch;
@@ -71,16 +74,16 @@ public class TableOperatorFactory {
     /**
      * 所有的数据类描述
      */
-    protected static final Map<Class<?>, SscTableInfo> tableInfoMapping = new HashMap<>();
+    private static final Map<Class<?>, SscTableInfo> tableInfoMapping = new HashMap<>();
     /**
      * 给用户操作的缓存类
      */
-    protected static final Map<Class<?>, Operator<?>> userOperatorMap = new HashMap<>();
+    private static final Map<Class<?>, Operator<?>> userOperatorMap = new HashMap<>();
     /**
      * 无缓存的操作类
      */
-    protected static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
-    protected static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
+    private static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
+    private static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
 
     public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
         this.jdbcTemplate = jdbcTemplate;
@@ -154,7 +157,7 @@ public class TableOperatorFactory {
                                                 doInsert(noCachedOperator, optionObject);
                                                 newStatus = CacheStatus.AFTER_INSERT;
                                             } catch (Exception e) {
-                                                log.error(String.format("缓存插入数据失败，cache: %s", JSONArray.toJSONString(cache)), e);
+                                                log.error(String.format("缓存插入数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache)), e);
                                                 // 插入失败的数据不删除
                                                 return false;
                                             }
@@ -166,7 +169,7 @@ public class TableOperatorFactory {
                                                 doUpdate(noCachedOperator, optionObject);
                                                 newStatus = CacheStatus.AFTER_UPDATE;
                                             } catch (Exception e) {
-                                                log.error(String.format("缓存更新数据失败，cache: %s", JSONArray.toJSONString(cache)), e);
+                                                log.error(String.format("缓存更新数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache)), e);
                                                 // 插入失败的数据不删除
                                                 return false;
                                             }
@@ -181,7 +184,7 @@ public class TableOperatorFactory {
                                 }
                             } catch (Exception e) {
                                 log.error(String.format("缓存同步进数据库失败,class:%s, object:%s, option:%s",
-                                        objectClass.getName(), JSONArray.toJSONString(optionObject), option), e);
+                                        objectClass.getName(), globalConfig.getJsonSerializer().toJsonString(optionObject), option), e);
                             }
                         }
                         // 清理超过最大闲置时间的缓存数据
@@ -207,22 +210,22 @@ public class TableOperatorFactory {
                         });
                         return outerMap.isEmpty();
                     });
-                    /*findAllFieldCacheMap.entrySet().removeIf(entry1 -> {
-                        Map<String, Map<Object, DataIdCache>> map1 = entry1.getValue();
+                    conditionCacheMap.entrySet().removeIf(entry1 -> {
+                        Map<String, Map<Object, ObjectListCache>> map1 = entry1.getValue();
                         map1.entrySet().removeIf(entry2 -> {
-                            Map<Object, DataIdCache> map2 = entry2.getValue();
+                            Map<Object, ObjectListCache> map2 = entry2.getValue();
                             map2.entrySet().removeIf(entry -> {
                                 long lastUseTime = entry.getValue().getLastUseTime();
-                                boolean delete = lastUseTime == 0 || lastUseTime + maxInactiveTime < now;
+                                boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.info(String.format("因长时间未使用，删除(findAll)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.info(String.format("因长时间未使用，删除条件缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
                                 }
                                 return delete;
                             });
                             return map2.isEmpty();
                         });
                         return map1.isEmpty();
-                    });*/
+                    });
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -298,6 +301,8 @@ public class TableOperatorFactory {
             Map<String, String> propDefaultValues = new HashMap<>();
             // 所有唯一键的字段集合
             Map<String, Set<String>> uniqueProps = new HashMap<>();
+            // 条件查询字段集合
+            Map<String, Set<String>> conditionProps = new HashMap<>();
             // 所有不会更新的字段集合
             Set<String> notUpdateProps = new HashSet<>();
             // 所有不需要缓存的字段集合
@@ -380,6 +385,10 @@ public class TableOperatorFactory {
                         if (uniqueName.length() > 0) {
                             uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
                         }
+                        String[] selectorNames = fieldDesc.selectorNames();
+                        for (String selectorName : selectorNames) {
+                            conditionProps.computeIfAbsent(selectorName, key -> new HashSet<>()).add(propName);
+                        }
                         if (fieldDesc.isNotUpdate()) {
                             notUpdateProps.add(propName);
                         }
@@ -424,6 +433,7 @@ public class TableOperatorFactory {
             dataClassDesc.setNotNullProps(notNullProps);
             dataClassDesc.setPropDefaultValues(propDefaultValues);
             dataClassDesc.setUniqueProps(uniqueProps);
+            dataClassDesc.setConditionProps(conditionProps);
             // id是不进行更新的
             notUpdateProps.add(idPropName);
             dataClassDesc.setNotUpdateProps(notUpdateProps);
@@ -454,7 +464,7 @@ public class TableOperatorFactory {
                     break;
                 }*/
             }
-            //System.out.println(JSONArray.toJSONString(sscTableInfo, SerializerFeature.PrettyFormat));
+            //System.out.println(globalConfig.getJsonSerializer().toJsonString(sscTableInfo, SerializerFeature.PrettyFormat));
             IdGeneratePolicy idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
             if (idGeneratePolicy instanceof DefaultIntegerIdGeneratePolicy) {
                 DefaultIntegerIdGeneratePolicy policy = (DefaultIntegerIdGeneratePolicy) idGeneratePolicy;
@@ -513,26 +523,14 @@ public class TableOperatorFactory {
 
     private void createTable(String[] createTableSql, Map<String, String[]> uniqueCreateSqlMap) {
         for (String sql : createTableSql) {
-            try {
-                jdbcTemplate.execute(sql);
-                log.info("创建表, sql: " + sql);
-            } catch (Exception e) {
-                if (!e.getMessage().contains("already exists")) {
-                    throw new SscRuntimeException(e);
-                }
-            }
+            jdbcTemplate.execute(sql);
+            log.info("创建表, sql: " + sql);
         }
         if (uniqueCreateSqlMap != null) {
             uniqueCreateSqlMap.values().forEach(array -> {
                 for (String sql : array) {
-                    try {
-                        jdbcTemplate.execute(sql);
-                        log.info("创建辅助表, sql: " + sql);
-                    } catch (Exception e) {
-                        if (!e.getMessage().contains("already exists")) {
-                            throw new SscRuntimeException(e);
-                        }
-                    }
+                    jdbcTemplate.execute(sql);
+                    log.info("创建辅助表, sql: " + sql);
                 }
             });
         }
@@ -699,27 +697,57 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                int size = propNames.size();
-                int tableCount = classDesc.getTableCount();
                 String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
-                Object[] params = new Object[size * tableCount];
-                int index = 0;
-                for (String propName : propNames) {
-                    params[index++] = getFieldValueFromObject(classDesc, propName, data);
-                }
-                int leftParamSize = (tableCount - 1) * size;
-                for (int i = 0; i < leftParamSize; i++) {
-                    params[index] = params[index % size];
-                    index ++;
-                }
+                Object[] params = getConditionParams(classDesc, propNames, data);
                 try {
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
-                } catch (IncorrectResultSizeDataAccessException ignore) {
-                    // queryForObject 在查到数据数量不是1的时候会抛出此异常
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
                     return null;
                 }
             }
+
+            @Override
+            public List<Object> selectByCondition(HashMap<String, Object> conditionMap) {
+                Set<String> propOrColumnNames = conditionMap.keySet();
+                String key = sscTableInfo.getNoCachedConditionKey(propOrColumnNames);
+                String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, propOrColumnNames));
+                Object[] params = getConditionParams(classDesc, conditionMap);
+                return jdbcTemplate.query(sql, (RowMapper<Object>) getRowMapper(), params);
+            }
         });
+    }
+
+    private Object[] getConditionParams(DataClassDesc classDesc, Map<String, Object> conditionMap) {
+        int size = conditionMap.size();
+        int tableCount = classDesc.getTableCount();
+        Object[] params = new Object[size * tableCount];
+        int index = 0;
+        for (Map.Entry<String, Object> entry : conditionMap.entrySet()) {
+            params[index++] = entry.getValue();
+        }
+        int leftParamSize = (tableCount - 1) * size;
+        for (int i = 0; i < leftParamSize; i++) {
+            params[index] = params[index % size];
+            index++;
+        }
+        return params;
+    }
+
+    private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data) {
+        int size = propNames.size();
+        int tableCount = classDesc.getTableCount();
+        Object[] params = new Object[size * tableCount];
+        int index = 0;
+        for (String propName : propNames) {
+            params[index++] = getFieldValueFromObject(classDesc, propName, data);
+        }
+        int leftParamSize = (tableCount - 1) * size;
+        for (int i = 0; i < leftParamSize; i++) {
+            params[index] = params[index % size];
+            index++;
+        }
+        return params;
     }
 
     /**
@@ -804,7 +832,6 @@ public class TableOperatorFactory {
                             // 唯一键的缓存
                             // 尝试获取数据对象中的唯一字段(或联合字段)的值
                             addUniqueValueCache(classDesc, object, cache);
-                            // TODO 条件查询的缓存
                         }
                     }
                     // 当前状态
@@ -886,7 +913,7 @@ public class TableOperatorFactory {
                 Map<Serializable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.info(String.format("未找到缓存，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
+                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedOperator(clazz);
                     Object value = noCachedOperator.selectById(id);
@@ -966,7 +993,7 @@ public class TableOperatorFactory {
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存，直接查询数据库, class:%s, uniqueName:%s, key:%s", clazz.getName(), uniqueName, data));
+                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", clazz.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedOperator(clazz);
                     Object value = doSelectByUniqueName(noCachedOperator, uniqueName, data);
@@ -995,13 +1022,75 @@ public class TableOperatorFactory {
                     return cache.getObjectInstance();
                 }
             }
+
+            @Override
+            public List<Object> selectByCondition(HashMap<String, Object> conditionMap) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditionMap));
+                    return doSelectByCondition(getNoCachedOperator(clazz), conditionMap);
+                }
+
+                String key = sscTableInfo.getNoCachedConditionKey(conditionMap.keySet());
+                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
+                Object uniqueValue = getUniqueValueByMap(conditionMap);
+                ObjectListCache cache = cacheMap.get(uniqueValue);
+                if (cache == null) {
+                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditionMap));
+                    // 缓存击穿，查询数据库
+                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz), conditionMap);
+                    // 放入缓存
+                    ObjectListCache objectListCache = new ObjectListCache();
+                    if (dataList != null) {
+                        ArrayList<Serializable> idList = new ArrayList<>(dataList.size());
+                        for (Object data : dataList) {
+                            Serializable idValue = getIdValueFromObject(classDesc, data);
+                            if (idValue == null) {
+                                continue;
+                            }
+                            idList.add(idValue);
+                            // 添加id缓存
+                            insertOrUpDateOrDelete(clazz, idValue, data, CacheStatus.AFTER_INSERT);
+                        }
+                        objectListCache.setIdList(idList);
+                    }
+                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+                    long now = System.currentTimeMillis();
+                    objectListCache.setLastUseTime(now);
+                    cacheMap.putIfAbsent(getUniqueValueByMap(conditionMap), objectListCache);
+                    return dataList;
+                } else {
+                    if (cache.getCacheStatus().isDelete()) {
+                        // 该对象需要删除或已被删除
+                        return null;
+                    }
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
+                    List<Serializable> idList = cache.getIdList();
+                    if (idList == null || idList.isEmpty()) {
+                        return Collections.emptyList();
+                    }
+                    List<Object> dataList = new ArrayList<>();
+                    for (Serializable idValue : idList) {
+                        // 根据id去查询对应的数据
+                        Object data = selectById(idValue);
+                        if (data == null) {
+                            continue;
+                        }
+                        dataList.add(data);
+                    }
+                    return dataList;
+                }
+            }
         });
     }
 
     /**
      * 获取数据对象的所有唯一对象的值
+     *
      * @param classDesc 数据描述对象
-     * @param object 数据对象
+     * @param object    数据对象
      */
     private void addUniqueValueCache(DataClassDesc classDesc, Object object, ObjectInstanceCache cache) {
         if (object == null) {
@@ -1019,7 +1108,7 @@ public class TableOperatorFactory {
                 // 放入唯一字段
                 uniqueMap.putIfAbsent(uniqueValue, cache);
             } catch (Exception e) {
-                log.error(String.format("获取数据的唯一字段值失败(getUniqueValue), classDesc:%s", JSONArray.toJSONString(classDesc)));
+                log.error(String.format("获取数据的唯一字段值失败(getUniqueValue), classDesc:%s", globalConfig.getJsonSerializer().toJsonString(classDesc)));
             }
         }
     }
@@ -1042,20 +1131,45 @@ public class TableOperatorFactory {
         uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
-    private Object getUniqueValueByUniqueName(DataClassDesc classDesc, Set<String> propNames, Object data) {
-        int size = propNames.size();
+    private Object getUniqueValueByMap(HashMap<String, Object> conditionMap) {
+        if (conditionMap == null || conditionMap.isEmpty()) {
+            return "";
+        }
+        JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
+        int size = conditionMap.size();
         if (size == 1) {
-            return getFieldValueFromObject(classDesc, propNames.iterator().next(), data);
+            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(conditionMap.values().iterator().next()));
         } else {
             // 联合字段
             StringBuilder builder1 = new StringBuilder();
             StringBuilder builder2 = new StringBuilder();
             int halfSize = size / 2;
             int i = 0;
-            JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
+            for (Object value : conditionMap.values()) {
+                if (i <= halfSize) {
+                    builder1.append(jsonSerializer.toJsonString(value));
+                } else {
+                    builder2.append(jsonSerializer.toJsonString(value));
+                }
+                i++;
+            }
+            return getStringFromBuilder(builder1, builder2);
+        }
+    }
+
+    private Object getUniqueValueByUniqueName(DataClassDesc classDesc, Set<String> propNames, Object data) {
+        int size = propNames.size();
+        JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
+        if (size == 1) {
+            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(getFieldValueFromObject(classDesc, propNames.iterator().next(), data)));
+        } else {
+            // 联合字段
+            StringBuilder builder1 = new StringBuilder();
+            StringBuilder builder2 = new StringBuilder();
+            int halfSize = size / 2;
+            int i = 0;
             for (String propName : propNames) {
                 Object fieldValue = getFieldValueFromObject(classDesc, propName, data);
-                ;
                 if (i <= halfSize) {
                     builder1.append(jsonSerializer.toJsonString(fieldValue));
                 } else {
@@ -1072,8 +1186,18 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
+    private List<Object> doSelectByCondition(Operator<?> operator, HashMap<String, Object> conditionMap) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
+            Method insertMethod = operatorClass.getMethod("selectByCondition", HashMap.class);
+            return (List<Object>) insertMethod.invoke(operator, conditionMap);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), conditionMap), e);
+        }
+    }
+
     private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
-        //selectByUniqueName
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
@@ -1106,6 +1230,13 @@ public class TableOperatorFactory {
         }
     }
 
+    /**
+     * 从数据对象中获取指定字段名称的字段的值
+     * @param classDesc 类的描述封装对象
+     * @param propName 类属性名称
+     * @param object 数据对象
+     * @return 属性的值
+     */
     private Object getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
         Method getMethod = classDesc.getPropGetMethods().get(propName);
         try {

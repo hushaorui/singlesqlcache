@@ -36,6 +36,8 @@ public class DataClassDesc {
     private Map<String, String> propDefaultValues;
     /** 所有唯一键的字段集合 */
     private Map<String, Set<String>> uniqueProps;
+    /** 所有需要添加缓存的条件查询字段集合 */
+    private Map<String, Set<String>> conditionProps;
     /** 所有不会更新的字段集合 */
     private Set<String> notUpdateProps;
     /** 所有不需要缓存的字段集合 */
@@ -47,10 +49,7 @@ public class DataClassDesc {
     /** 是否使用id生成策略 */
     private boolean useIdGeneratePolicy;
 
-    public String getColumnByProp(String propName) {
+    String getColumnByProp(String propName) {
         return propColumnMapping.getOrDefault(propName, propName);
-    }
-    public String getPropByColumn(String columnName) {
-        return columnPropMapping.getOrDefault(columnName, columnName);
     }
 }

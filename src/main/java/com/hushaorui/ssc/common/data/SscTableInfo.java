@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 表的信息
@@ -24,6 +25,11 @@ public class SscTableInfo {
     private String[] selectByIdSql;
     /** 根据唯一约束的字段查询数据 */
     private Map<String, String> selectByUniqueKeySql;
+    /** 根据指定字段查询数据 */
+    private Map<String, String> selectByConditionSql;
+    /** 根据指定字段查询数据 */
+    private Map<String, String> noCachedSelectByConditionSql;
+
     /** 所有不需要缓存的数据更新 */
     private String[] updateAllNotCachedByIdSql;
     /** 根据id删除数据 */
@@ -40,6 +46,9 @@ public class SscTableInfo {
     private Map<String, String[]> uniqueCreateSqlMap;
     /** 唯一键查询sql */
     private Map<String, String> uniqueSelectSqlMap;
+
+    /** 表名 */
+    private String[] tableNames;
 
     public SscTableInfo(DataClassDesc classDesc, SingleSqlCacheConfig config) {
         this.classDesc = classDesc;
@@ -60,21 +69,23 @@ public class SscTableInfo {
             throw new SscRuntimeException(String.format("There is no table split policy with class: %s, prop: %s", idJavaType.getName(), idPropName));
         }
         // 唯一键的类型也必须能够找到对应的分表策略
-        classDesc.getUniqueProps().values().forEach(propNames -> {
+        /*classDesc.getUniqueProps().values().forEach(propNames -> {
             for (String propName : propNames) {
                 Class<?> propType = propGetMethods.get(propName).getReturnType();
                 if (! config.getTableSplitPolicyMap().containsKey(propType)) {
                     throw new SscRuntimeException(String.format("There is no table split policy with class: %s, prop: %s", propType.getName(), propName));
                 }
             }
-        });
+        });*/
         int tableCount = classDesc.getTableCount();
+        String[] tableNames = new String[tableCount];
         String[] createTableSql = new String[tableCount];
         String[] dropTableSql = new String[tableCount];
         String[] insertSql = new String[tableCount];
         StringBuilder selectAll = new StringBuilder();
         String[] selectByIdSql = new String[tableCount];
         Map<String, StringBuilder> selectByUniqueKeySqlMap = new HashMap<>();
+
         String[] updateAllNotCachedByIdSql = new String[tableCount];
         String[] deleteByIdSql = new String[tableCount];
         String[] selectMaxIdSql = new String[tableCount];
@@ -107,6 +118,7 @@ public class SscTableInfo {
             realTableNameBuilder.append(indexString);
             // 真正的表名
             String realTableName = realTableNameBuilder.toString();
+            tableNames[i] = realTableName;
             create.append(realTableName);
             create.append("(\n");
             create.append("    ").append(idColumnName).append(" ").append(classDesc.getPropColumnTypeMapping().get(idPropName));
@@ -261,6 +273,7 @@ public class SscTableInfo {
             }
         }
 
+        this.tableNames = tableNames;
         this.createTableSql = createTableSql;
         this.dropTableSql = dropTableSql;
         this.insertSql = insertSql;
@@ -269,6 +282,8 @@ public class SscTableInfo {
         Map<String, String> selectByUniqueKeySql = new HashMap<>();
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;
+
+        this.selectByConditionSql = getConditionSql();
         this.updateAllNotCachedByIdSql = updateAllNotCachedByIdSql;
         this.deleteByIdSql = deleteByIdSql;
         this.selectMaxIdSql = selectMaxIdSql;
@@ -301,5 +316,73 @@ public class SscTableInfo {
         }
         //uniqueSelectSqlMap.values().forEach(System.out::println);
         this.uniqueSelectSqlMap = uniqueSelectSqlMap;
+    }
+
+    /**
+     * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
+     * @param propOrColumnNames 属性名或字段名集合(可混合)
+     * @return 查询sql
+     */
+    public String getNoCachedConditionSql(String key, Set<String> propOrColumnNames) {
+        if (noCachedSelectByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedSelectByConditionSql == null) {
+                    noCachedSelectByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, propOrColumnNames, noCachedSelectByConditionSql));
+    }
+
+    public String getNoCachedConditionKey(Set<String> propOrColumnNames) {
+        StringBuilder key = new StringBuilder();
+        Iterator<String> iterator = propOrColumnNames.iterator();
+        while (iterator.hasNext()) {
+            // 统一使用 columnName
+            String columnName = classDesc.getColumnByProp(iterator.next());
+            // 字段名不可能存在空格，这里使用空格分隔
+            key.append(columnName);
+            if (iterator.hasNext()) {
+                key.append(" ");
+            }
+        }
+        return key.toString();
+    }
+
+    private Map<String, String> getConditionSql() {
+        Map<String, String> map = new HashMap<>();
+        // select xx.* from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
+        Map<String, Set<String>> conditionProps = classDesc.getConditionProps();
+        conditionProps.forEach((selectorName, propNames) -> {
+            putConditionSqlToMap(null, propNames, map);
+        });
+        return map;
+    }
+
+    private String putConditionSqlToMap(String key, Set<String> propOrColumnNames, Map<String, String> map) {
+        StringBuilder builder = new StringBuilder();
+        int tableCount = classDesc.getTableCount();
+        for (int i = 0; i < tableCount; i ++) {
+            if (i > 0) {
+                builder.append("\nunion all \n");
+            }
+            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]).append(" where ");
+            Iterator<String> iterator = propOrColumnNames.iterator();
+            while (iterator.hasNext()) {
+                String propOrColumnName = iterator.next();
+                String columnName = classDesc.getColumnByProp(propOrColumnName);
+                builder.append(columnName).append(" = ?");
+                if (iterator.hasNext()) {
+                    builder.append(" and ");
+                }
+            }
+        }
+        String value = builder.toString();
+        if (key == null) {
+            map.put(getNoCachedConditionKey(propOrColumnNames), value);
+        } else {
+            map.put(key, value);
+        }
+        return value;
     }
 }
