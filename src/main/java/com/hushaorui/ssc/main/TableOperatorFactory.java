@@ -345,7 +345,7 @@ public class TableOperatorFactory {
         // 所有唯一键的字段集合
         Map<String, Set<String>> uniqueProps = new HashMap<>();
         // 条件查询字段集合
-        Map<String, Set<String>> conditionProps = new HashMap<>();
+        Map<String, Map<String, SpecialValueEnum>> conditionProps = new HashMap<>();
         // 所有不会更新的字段集合
         Set<String> notUpdateProps = new HashSet<>();
         // 所有不需要缓存的字段集合
@@ -429,8 +429,14 @@ public class TableOperatorFactory {
                         uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
                     }
                     String[] selectorNames = fieldDesc.selectorNames();
-                    for (String selectorName : selectorNames) {
-                        conditionProps.computeIfAbsent(selectorName, key -> new HashSet<>()).add(propName);
+                    SpecialValueEnum[] specialValueEnums = fieldDesc.selectorType();
+                    for (int m = 0; m < selectorNames.length; m ++) {
+                        String selectorName = selectorNames[m].trim();
+                        if (selectorName.length() == 0) {
+                            continue;
+                        }
+                        SpecialValueEnum type = specialValueEnums[m % specialValueEnums.length];
+                        conditionProps.computeIfAbsent(selectorName, key -> new HashMap<>()).put(propName, type);
                     }
                     if (fieldDesc.isNotUpdate()) {
                         notUpdateProps.add(propName);

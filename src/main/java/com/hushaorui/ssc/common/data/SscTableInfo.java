@@ -398,12 +398,12 @@ public class SscTableInfo {
         }
         return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, conditionMap, noCachedSelectByConditionSql));
     }
-    /**
+    /*
      * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
      * @param propOrColumnNames 属性名或字段名集合(可混合)
      * @return 查询sql
      */
-    public String getNoCachedConditionSql(String key, Set<String> propOrColumnNames) {
+    /*public String getNoCachedConditionSql(String key, Set<String> propOrColumnNames) {
         if (noCachedSelectByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectByConditionSql == null) {
@@ -412,7 +412,7 @@ public class SscTableInfo {
             }
         }
         return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, propOrColumnNames, noCachedSelectByConditionSql));
-    }
+    }*/
 
     /*
      * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
@@ -447,12 +447,15 @@ public class SscTableInfo {
         return key.toString().intern();
     }
 
-    private String getNoCachedConditionKey(Set<String> propOrColumnNames) {
+    private String getNoCachedConditionKey(Map<String, SpecialValueEnum> propAndTypes) {
         StringBuilder key = new StringBuilder();
-        Iterator<String> iterator = propOrColumnNames.iterator();
+        Iterator<Map.Entry<String, SpecialValueEnum>> iterator = propAndTypes.entrySet().iterator();
+
         while (iterator.hasNext()) {
+            Map.Entry<String, SpecialValueEnum> next = iterator.next();
             // 统一使用 columnName
-            String columnName = classDesc.getColumnByProp(iterator.next());
+            String columnName = classDesc.getColumnByProp(next.getKey());
+            key.append(next.getValue().getKeyString());
             // 字段名不可能存在空格，这里使用空格分隔
             key.append(columnName);
             if (iterator.hasNext()) {
@@ -465,8 +468,8 @@ public class SscTableInfo {
     private Map<String, String> getConditionSql() {
         Map<String, String> map = new HashMap<>();
         // select xx.* from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
-        Map<String, Set<String>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propNames) -> putConditionSqlToMap(null, propNames, map));
+        Map<String, Map<String, SpecialValueEnum>> conditionProps = classDesc.getConditionProps();
+        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map));
         return map;
     }
 
@@ -491,7 +494,7 @@ public class SscTableInfo {
         return value;
     }*/
 
-    private void splicingConditionSql(StringBuilder builder, Map<Class<?>, SscTableInfo> tableInfoMapping, SscCondition condition, SscTableInfo sscTableInfo) {
+    /*private void splicingConditionSql(StringBuilder builder, Map<Class<?>, SscTableInfo> tableInfoMapping, SscCondition condition, SscTableInfo sscTableInfo) {
         SscConditionEnum type = condition.getType();
         if (SscConditionEnum.FIRST.equals(type)) {
             builder.append(" limit ").append(condition.getNumber());
@@ -509,7 +512,7 @@ public class SscTableInfo {
                 builder.append(" inner join ").append(desc.getTableName());
             } else if (SscConditionEnum.ON.equals(type)) {
                 builder.append(" on");
-                // TODO 连接条件
+                // TODO_LIST 连接条件
             } else {
                 HashMap<String, Object> fieldMap = condition.getFieldMap();
                 if (fieldMap != null) {
@@ -536,7 +539,7 @@ public class SscTableInfo {
                 }
             }
         }
-    }
+    }*/
 
     private String putConditionSqlToMap(String key, HashMap<String, Object> conditionMap, Map<String, String> map) {
         StringBuilder builder = new StringBuilder();
@@ -583,7 +586,7 @@ public class SscTableInfo {
         }
         return value;
     }
-    private String putConditionSqlToMap(String key, Set<String> propOrColumnNames, Map<String, String> map) {
+    private void putConditionSqlToMap(Map<String, SpecialValueEnum> propAndTypes, Map<String, String> map) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
         for (int i = 0; i < tableCount; i ++) {
@@ -591,26 +594,26 @@ public class SscTableInfo {
                 builder.append("\nunion all \n");
             }
             builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
-            Iterator<String> iterator = propOrColumnNames.iterator();
+            Iterator<Map.Entry<String, SpecialValueEnum>> iterator = propAndTypes.entrySet().iterator();
             if (iterator.hasNext()) {
                 builder.append(" where ");
             }
             while (iterator.hasNext()) {
-                String propOrColumnName = iterator.next();
-                String columnName = classDesc.getColumnByProp(propOrColumnName);
-                builder.append(columnName).append(" = ?");
+                Map.Entry<String, SpecialValueEnum> next = iterator.next();
+                String columnName = classDesc.getColumnByProp(next.getKey());
+                builder.append(columnName);
+                SpecialValueEnum type = next.getValue();
+                if (SpecialValueEnum.ValueIn.equals(type)) {
+                    // 无法确定集合的大小，这里只能象征性地放一个
+                    builder.append(" in (?)");
+                } else {
+                    builder.append(type.getSqlString());
+                }
                 if (iterator.hasNext()) {
                     builder.append(" and ");
                 }
             }
         }
-        String value = builder.toString();
-        if (key == null) {
-            map.put(getNoCachedConditionKey(propOrColumnNames), value);
-        } else {
-            map.put(key, value);
-        }
-        return value;
+        map.put(getNoCachedConditionKey(propAndTypes), builder.toString());
     }
-
 }

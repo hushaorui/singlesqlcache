@@ -1,5 +1,7 @@
 package com.hushaorui.ssc.common.data;
 
+import com.hushaorui.ssc.param.SpecialValueEnum;
+
 import java.util.Map;
 import java.util.Set;
 
@@ -26,7 +28,7 @@ public class DataClassDesc extends CommonClassDesc {
     /** 所有唯一键的字段集合 */
     private Map<String, Set<String>> uniqueProps;
     /** 所有需要添加缓存的条件查询字段集合 */
-    private Map<String, Set<String>> conditionProps;
+    private Map<String, Map<String, SpecialValueEnum>> conditionProps;
     /** 所有不会更新的字段集合 */
     private Set<String> notUpdateProps;
     /** 所有不需要缓存的字段集合 */
@@ -102,11 +104,11 @@ public class DataClassDesc extends CommonClassDesc {
         this.uniqueProps = uniqueProps;
     }
 
-    public Map<String, Set<String>> getConditionProps() {
+    public Map<String, Map<String, SpecialValueEnum>> getConditionProps() {
         return conditionProps;
     }
 
-    public void setConditionProps(Map<String, Set<String>> conditionProps) {
+    public void setConditionProps(Map<String, Map<String, SpecialValueEnum>> conditionProps) {
         this.conditionProps = conditionProps;
     }
 

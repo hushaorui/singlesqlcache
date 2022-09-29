@@ -1,5 +1,7 @@
 package com.hushaorui.ssc.common.anno;
 
+import com.hushaorui.ssc.param.SpecialValueEnum;
+
 import java.lang.annotation.*;
 
 /**
@@ -30,6 +32,8 @@ public @interface FieldDesc {
     boolean isNotUpdate() default false;
     /** 是否需要缓存，默认是需要的 */
     boolean cached() default true;
-    /** 多字段条件查询，只有标注的才会产生缓存 */
+    /** 多字段条件查询时，有此标注的才会产生缓存 */
     String[] selectorNames() default "";
+    /** 多字段查询时，有此标注的才会产生缓存(只有 selectorNames有值时才会生效) */
+    SpecialValueEnum[] selectorType() default SpecialValueEnum.Equal;
 }

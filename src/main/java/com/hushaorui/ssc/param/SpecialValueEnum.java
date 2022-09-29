@@ -14,7 +14,7 @@ public enum SpecialValueEnum {
     ValueLessOrEqual(ValueLessOrEqual.class, " <=", " <= ?"),
     ValueLessThan(ValueLessThan.class, " <", " < ?"),
     ValueLike(ValueLike.class, " like", " like ?"),
-    None(Object.class, "", " = ?"),
+    Equal(Object.class, "", " = ?"),
     ;
 
     SpecialValueEnum(Class<?> clazz, String keyString, String sqlString) {
@@ -38,15 +38,27 @@ public enum SpecialValueEnum {
 
     public static String getKeyString(Object object) {
         if (object == null) {
-            return None.keyString;
+            return Equal.keyString;
         }
-        return mapping.getOrDefault(object.getClass(), None).keyString;
+        return mapping.getOrDefault(object.getClass(), Equal).keyString;
     }
 
     public static String getSqlString(Object object) {
         if (object == null) {
-            return None.sqlString;
+            return Equal.sqlString;
         }
-        return mapping.getOrDefault(object.getClass(), None).sqlString;
+        return mapping.getOrDefault(object.getClass(), Equal).sqlString;
+    }
+
+    public Class<?> getClazz() {
+        return clazz;
+    }
+
+    public String getKeyString() {
+        return keyString;
+    }
+
+    public String getSqlString() {
+        return sqlString;
     }
 }
