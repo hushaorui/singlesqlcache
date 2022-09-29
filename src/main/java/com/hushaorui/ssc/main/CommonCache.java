@@ -1,13 +1,9 @@
 package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.common.em.CacheStatus;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.io.Serializable;
 
-@Getter
-@Setter
 class CommonCache {
     /** 在数据库中的id(分表的数据对象id会重复) */
     private Serializable id;
@@ -19,4 +15,44 @@ class CommonCache {
     private long lastUseTime;
     /** 缓存的状态 */
     private CacheStatus cacheStatus;
+
+    public Serializable getId() {
+        return id;
+    }
+
+    public void setId(Serializable id) {
+        this.id = id;
+    }
+
+    public Class<?> getObjectClass() {
+        return objectClass;
+    }
+
+    public void setObjectClass(Class<?> objectClass) {
+        this.objectClass = objectClass;
+    }
+
+    public long getLastModifyTime() {
+        return lastModifyTime;
+    }
+
+    public void setLastModifyTime(long lastModifyTime) {
+        this.lastModifyTime = lastModifyTime;
+    }
+
+    public long getLastUseTime() {
+        return lastUseTime;
+    }
+
+    public void setLastUseTime(long lastUseTime) {
+        this.lastUseTime = lastUseTime;
+    }
+
+    public CacheStatus getCacheStatus() {
+        return cacheStatus;
+    }
+
+    public void setCacheStatus(CacheStatus cacheStatus) {
+        this.cacheStatus = cacheStatus;
+    }
 }

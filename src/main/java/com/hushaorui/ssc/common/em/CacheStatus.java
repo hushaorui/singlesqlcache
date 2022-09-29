@@ -1,8 +1,5 @@
 package com.hushaorui.ssc.common.em;
 
-import lombok.Getter;
-
-@Getter
 public enum CacheStatus {
     /** 需要插入数据 */
     INSERT(true, false),
@@ -24,5 +21,13 @@ public enum CacheStatus {
     CacheStatus(boolean needSynToDB, boolean delete) {
         this.needSynToDB = needSynToDB;
         this.delete = delete;
+    }
+
+    public boolean isNeedSynToDB() {
+        return needSynToDB;
+    }
+
+    public boolean isDelete() {
+        return delete;
     }
 }

@@ -2,9 +2,6 @@ package com.hushaorui.ssc.test.common;
 
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -22,10 +19,7 @@ create table test_player (
     unique key (third_type, third_id)
 ) ENGINE = innoDB AUTO_INCREMENT = 100000000001;
  */
-@Getter
-@Setter
 @DataClass(tableCount = 4)
-@ToString
 public class TestPlayer {
     @FieldDesc(isId = true)
     private Long userId;
@@ -40,10 +34,106 @@ public class TestPlayer {
     private Timestamp birthdayTime;
     private Date primarySchoolStartDay;
     private Long lastLoginTime;
-    private Long lastLoginIp;
+    private String lastLoginIp;
     //private TestAddress testAddress;
 
     // 该段不会保存
     @FieldDesc(noneSave = true)
     private String extraString;
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getThirdType() {
+        return thirdType;
+    }
+
+    public void setThirdType(String thirdType) {
+        this.thirdType = thirdType;
+    }
+
+    public Long getThirdId() {
+        return thirdId;
+    }
+
+    public void setThirdId(Long thirdId) {
+        this.thirdId = thirdId;
+    }
+
+    public Long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Long createTime) {
+        this.createTime = createTime;
+    }
+
+    public Timestamp getBirthdayTime() {
+        return birthdayTime;
+    }
+
+    public void setBirthdayTime(Timestamp birthdayTime) {
+        this.birthdayTime = birthdayTime;
+    }
+
+    public Date getPrimarySchoolStartDay() {
+        return primarySchoolStartDay;
+    }
+
+    public void setPrimarySchoolStartDay(Date primarySchoolStartDay) {
+        this.primarySchoolStartDay = primarySchoolStartDay;
+    }
+
+    public Long getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(Long lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
+    }
+
+    public String getLastLoginIp() {
+        return lastLoginIp;
+    }
+
+    public void setLastLoginIp(String lastLoginIp) {
+        this.lastLoginIp = lastLoginIp;
+    }
+
+    public String getExtraString() {
+        return extraString;
+    }
+
+    public void setExtraString(String extraString) {
+        this.extraString = extraString;
+    }
+
+    @Override
+    public String toString() {
+        return "TestPlayer{" +
+                "userId=" + userId +
+                ", username='" + username + '\'' +
+                ", thirdType='" + thirdType + '\'' +
+                ", thirdId=" + thirdId +
+                ", createTime=" + createTime +
+                ", birthdayTime=" + birthdayTime +
+                ", primarySchoolStartDay=" + primarySchoolStartDay +
+                ", lastLoginTime=" + lastLoginTime +
+                ", lastLoginIp='" + lastLoginIp + '\'' +
+                ", extraString='" + extraString + '\'' +
+                '}';
+    }
 }

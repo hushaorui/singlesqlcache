@@ -1,11 +1,15 @@
 package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
-import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
+import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.main.Operator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
+import com.hushaorui.ssc.param.ValueBetween;
+import com.hushaorui.ssc.param.ValueGreatThan;
+import com.hushaorui.ssc.param.ValueIsNotNull;
+import com.hushaorui.ssc.param.ValueIsNull;
 import com.hushaorui.ssc.test.common.TestPlayer;
 import org.junit.Before;
 import org.junit.Test;
@@ -22,9 +26,11 @@ import java.util.List;
 public class TableOperatorFactoryTest {
     private JdbcTemplate jdbcTemplate;
     private TableOperatorFactory tableOperatorFactory;
+    private JSONSerializer jsonSerializer;
     @Before
     public void beforeTest() {
         try {
+            jsonSerializer = (JSONSerializer) Class.forName("com.hushaorui.ssc.config.DefaultJSONSerializer").newInstance();
             DruidDataSource druidDataSource = newDataSource("jdbc:mysql://192.168.1.239:3306/test_ssc?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC",
                     "root", "123456", 10);
             jdbcTemplate = new JdbcTemplate(druidDataSource);
@@ -102,15 +108,15 @@ public class TableOperatorFactoryTest {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
             TestPlayer testPlayer = getTestPlayer();
             operator.insert(testPlayer);
-            System.out.println("更新前: " + JSONArray.toJSONString(testPlayer));
+            System.out.println("更新前: " + jsonSerializer.toJsonString(testPlayer));
             testPlayer.setThirdId(8000000L);
             testPlayer.setLastLoginTime(System.currentTimeMillis());
             operator.update(testPlayer);
             TestPlayer player = operator.selectById(testPlayer.getUserId());
-            System.out.println("更新后: " + JSONArray.toJSONString(player));
+            System.out.println("更新后: " + jsonSerializer.toJsonString(player));
             operator.delete(player);
             player = operator.selectById(testPlayer.getUserId());
-            System.out.println("删除后: " + JSONArray.toJSONString(player));
+            System.out.println("删除后: " + jsonSerializer.toJsonString(player));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -131,10 +137,10 @@ public class TableOperatorFactoryTest {
                 }
             }
             TestPlayer player = operator.selectById(id);
-            System.out.println(JSONArray.toJSONString(player));
+            System.out.println(jsonSerializer.toJsonString(player));
             tableOperatorFactory.close();
             TestPlayer player2 = operator.selectById(id);
-            System.out.println(JSONArray.toJSONString(player2));
+            System.out.println(jsonSerializer.toJsonString(player2));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -153,7 +159,7 @@ public class TableOperatorFactoryTest {
             // 第二次能够使用缓存
             player = operator.selectByUniqueName("third_type_third_id", select);
             System.out.println(player == null ? null : player.hashCode());
-            System.out.println(JSONArray.toJSONString(player));
+            System.out.println(jsonSerializer.toJsonString(player));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -171,7 +177,7 @@ public class TableOperatorFactoryTest {
             // 第二次能够使用缓存
             player = operator.selectByUniqueName("username", select);
             System.out.println(player == null ? null : player.hashCode());
-            System.out.println(JSONArray.toJSONString(player));
+            System.out.println(jsonSerializer.toJsonString(player));
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -183,10 +189,71 @@ public class TableOperatorFactoryTest {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
             HashMap<String, Object> conditionMap = new HashMap<>();
             conditionMap.put("username", "张三1");
+            conditionMap.put("third_type", "morlia1");
             List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
-            System.out.println(JSONArray.toJSONString(testPlayers));
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(conditionMap);
-            System.out.println(JSONArray.toJSONString(testPlayers));
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByCondition_ValueIsNotNull() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            HashMap<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("lastLoginIp", ValueIsNotNull.IS_NOT_NULL);
+            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+            testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByCondition_ValueIsNull() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            HashMap<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("lastLoginIp", ValueIsNull.IS_NULL);
+            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+            testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByCondition_ValueGreatThan() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            HashMap<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("user_id", new ValueGreatThan<>(5L));
+            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+            testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_selectByCondition_ValueBetween() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            HashMap<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("user_id", new ValueBetween<>(5L, 6L));
+            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+            testPlayers = operator.selectByCondition(conditionMap);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
         }

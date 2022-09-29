@@ -4,23 +4,20 @@ import com.hushaorui.ssc.common.em.ColumnNameStyle;
 import com.hushaorui.ssc.common.em.SscLaunchPolicy;
 import com.hushaorui.ssc.common.em.TableNameStyle;
 import com.hushaorui.ssc.exception.SscRuntimeException;
+import com.hushaorui.ssc.log.SscLogFactory;
+import com.hushaorui.ssc.log.SscLogFactoryImpl;
 import com.hushaorui.ssc.main.*;
 import javafx.util.Pair;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.sql.Timestamp;
-import java.util.*;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * 中心配置
  */
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 public class SingleSqlCacheConfig {
     /**缓存默认最大闲置时间(不使用后开始计算) 单位：毫秒，默认5分钟，如果设置为0或小于0，则表示关闭缓存 */
     private long maxInactiveTime = 300000;
@@ -34,12 +31,21 @@ public class SingleSqlCacheConfig {
     private String uniqueTableNameSuffix = "_assist_table";
     /** 唯一键辅助表的id名称，如果和你的表字段名称重复，请重设此值 */
     private String uniqueTableIdName = "assist_id";
+    /** 日志打印类 */
+    private SscLogFactory logFactory = SscLogFactoryImpl.getInstance();
 
     /** json数据转换器 */
-    private JSONSerializer jsonSerializer = new DefaultJSONSerializer();
+    private JSONSerializer jsonSerializer;
     /** java类型和表类型的映射 */
     private Map<Class<?>, String> javaTypeToTableType = new HashMap<>();
     {
+        try {
+            // 为了解耦
+            jsonSerializer = (JSONSerializer) Class.forName("com.hushaorui.ssc.config.DefaultJSONSerializer").newInstance();
+        } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+            throw new SscRuntimeException(e);
+        }
+
         javaTypeToTableType.put(String.class, "VARCHAR");
         javaTypeToTableType.put(byte.class, "TINYINT");
         javaTypeToTableType.put(Byte.class, "TINYINT");
@@ -112,5 +118,117 @@ public class SingleSqlCacheConfig {
                 }
             }
         }
+    }
+
+    public long getMaxInactiveTime() {
+        return maxInactiveTime;
+    }
+
+    public void setMaxInactiveTime(long maxInactiveTime) {
+        this.maxInactiveTime = maxInactiveTime;
+    }
+
+    public long getPersistenceIntervalTime() {
+        return persistenceIntervalTime;
+    }
+
+    public void setPersistenceIntervalTime(long persistenceIntervalTime) {
+        this.persistenceIntervalTime = persistenceIntervalTime;
+    }
+
+    public TableNameStyle getTableNameStyle() {
+        return tableNameStyle;
+    }
+
+    public void setTableNameStyle(TableNameStyle tableNameStyle) {
+        this.tableNameStyle = tableNameStyle;
+    }
+
+    public ColumnNameStyle getColumnNameStyle() {
+        return columnNameStyle;
+    }
+
+    public void setColumnNameStyle(ColumnNameStyle columnNameStyle) {
+        this.columnNameStyle = columnNameStyle;
+    }
+
+    public String getUniqueTableNameSuffix() {
+        return uniqueTableNameSuffix;
+    }
+
+    public void setUniqueTableNameSuffix(String uniqueTableNameSuffix) {
+        this.uniqueTableNameSuffix = uniqueTableNameSuffix;
+    }
+
+    public String getUniqueTableIdName() {
+        return uniqueTableIdName;
+    }
+
+    public void setUniqueTableIdName(String uniqueTableIdName) {
+        this.uniqueTableIdName = uniqueTableIdName;
+    }
+
+    public JSONSerializer getJsonSerializer() {
+        return jsonSerializer;
+    }
+
+    public void setJsonSerializer(JSONSerializer jsonSerializer) {
+        this.jsonSerializer = jsonSerializer;
+    }
+
+    public Map<Class<?>, String> getJavaTypeToTableType() {
+        return javaTypeToTableType;
+    }
+
+    public void setJavaTypeToTableType(Map<Class<?>, String> javaTypeToTableType) {
+        this.javaTypeToTableType = javaTypeToTableType;
+    }
+
+    public String getDefaultTableType() {
+        return defaultTableType;
+    }
+
+    public void setDefaultTableType(String defaultTableType) {
+        this.defaultTableType = defaultTableType;
+    }
+
+    public int getDefaultLength() {
+        return defaultLength;
+    }
+
+    public void setDefaultLength(int defaultLength) {
+        this.defaultLength = defaultLength;
+    }
+
+    public SscLaunchPolicy getLaunchPolicy() {
+        return launchPolicy;
+    }
+
+    public void setLaunchPolicy(SscLaunchPolicy launchPolicy) {
+        this.launchPolicy = launchPolicy;
+    }
+
+    public Map<Class<?>, IdGeneratePolicy<?>> getIdGeneratePolicyMap() {
+        return idGeneratePolicyMap;
+    }
+
+    public void setIdGeneratePolicyMap(Map<Class<?>, IdGeneratePolicy<?>> idGeneratePolicyMap) {
+        this.idGeneratePolicyMap = idGeneratePolicyMap;
+    }
+
+    public Map<Class<?>, TreeMap<Comparable, TableSplitPolicy<? extends Comparable>>> getTableSplitPolicyMap() {
+        return tableSplitPolicyMap;
+    }
+
+    public void setTableSplitPolicyMap(Map<Class<?>, TreeMap<Comparable, TableSplitPolicy<? extends Comparable>>> tableSplitPolicyMap) {
+        this.tableSplitPolicyMap = tableSplitPolicyMap;
+    }
+
+    public SscLogFactory getLogFactory() {
+        return logFactory;
+    }
+
+    public void setLogFactory(SscLogFactory logFactory) {
+        this.logFactory = logFactory;
     }
 }

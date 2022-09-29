@@ -1,5 +1,8 @@
 package com.hushaorui.ssc.main;
 
+import com.hushaorui.ssc.common.data.SscCondition;
+import org.springframework.jdbc.core.JdbcTemplate;
+
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
@@ -60,4 +63,10 @@ public interface Operator<DATA> {
      * @return 数据集合
      */
     List<DATA> selectByCondition(HashMap<String, Object> conditionMap);
+
+    /**
+     * 获取数据库操作类
+     * @return 数据库操作类
+     */
+    JdbcTemplate getJdbcTemplate();
 }

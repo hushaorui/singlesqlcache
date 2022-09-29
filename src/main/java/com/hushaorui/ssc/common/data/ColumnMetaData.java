@@ -1,14 +1,9 @@
 package com.hushaorui.ssc.common.data;
 
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 
 import java.io.Serializable;
 
-@Getter
-@ToString
 public class ColumnMetaData implements Serializable {
 
     private String name; // 字段名称
@@ -29,5 +24,46 @@ public class ColumnMetaData implements Serializable {
         this.columnClassName = metaData.getColumnClassName(i);
         this.columnLabel = metaData.getColumnLabel(i);
         this.schemaName = metaData.getSchemaName(i);
+    }
+
+    @Override
+    public String toString() {
+        return "ColumnMetaData{" +
+                "name='" + name + '\'' +
+                ", type=" + type +
+                ", typeName='" + typeName + '\'' +
+                ", columnDisplaySize=" + columnDisplaySize +
+                ", columnClassName='" + columnClassName + '\'' +
+                ", columnLabel='" + columnLabel + '\'' +
+                ", schemaName='" + schemaName + '\'' +
+                '}';
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getType() {
+        return type;
+    }
+
+    public String getTypeName() {
+        return typeName;
+    }
+
+    public int getColumnDisplaySize() {
+        return columnDisplaySize;
+    }
+
+    public String getColumnClassName() {
+        return columnClassName;
+    }
+
+    public String getColumnLabel() {
+        return columnLabel;
+    }
+
+    public String getSchemaName() {
+        return schemaName;
     }
 }

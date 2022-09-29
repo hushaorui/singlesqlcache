@@ -1,8 +1,10 @@
 package com.hushaorui.ssc.common.data;
 
+import com.hushaorui.ssc.common.em.SscConditionEnum;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
-import lombok.Getter;
+import com.hushaorui.ssc.param.SpecialValueEnum;
+import com.hushaorui.ssc.param.ValueIn;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -11,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 表的信息
  */
-@Getter
 public class SscTableInfo {
     /** 建表语句 */
     private String[] createTableSql;
@@ -49,6 +50,70 @@ public class SscTableInfo {
 
     /** 表名 */
     private String[] tableNames;
+
+    public String[] getCreateTableSql() {
+        return createTableSql;
+    }
+
+    public String[] getDropTableSql() {
+        return dropTableSql;
+    }
+
+    public String[] getInsertSql() {
+        return insertSql;
+    }
+
+    public String getSelectAllSql() {
+        return selectAllSql;
+    }
+
+    public String[] getSelectByIdSql() {
+        return selectByIdSql;
+    }
+
+    public Map<String, String> getSelectByUniqueKeySql() {
+        return selectByUniqueKeySql;
+    }
+
+    public Map<String, String> getSelectByConditionSql() {
+        return selectByConditionSql;
+    }
+
+    public Map<String, String> getNoCachedSelectByConditionSql() {
+        return noCachedSelectByConditionSql;
+    }
+
+    public String[] getUpdateAllNotCachedByIdSql() {
+        return updateAllNotCachedByIdSql;
+    }
+
+    public String[] getDeleteByIdSql() {
+        return deleteByIdSql;
+    }
+
+    public String[] getSelectMaxIdSql() {
+        return selectMaxIdSql;
+    }
+
+    public DataClassDesc getClassDesc() {
+        return classDesc;
+    }
+
+    public Class<?> getIdJavaType() {
+        return idJavaType;
+    }
+
+    public Map<String, String[]> getUniqueCreateSqlMap() {
+        return uniqueCreateSqlMap;
+    }
+
+    public Map<String, String> getUniqueSelectSqlMap() {
+        return uniqueSelectSqlMap;
+    }
+
+    public String[] getTableNames() {
+        return tableNames;
+    }
 
     public SscTableInfo(DataClassDesc classDesc, SingleSqlCacheConfig config) {
         this.classDesc = classDesc;
@@ -320,6 +385,21 @@ public class SscTableInfo {
 
     /**
      * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
+     * @param conditionMap 属性名或字段名集合(可混合)
+     * @return 查询sql
+     */
+    public String getNoCachedConditionSql(String key, HashMap<String, Object> conditionMap) {
+        if (noCachedSelectByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedSelectByConditionSql == null) {
+                    noCachedSelectByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, conditionMap, noCachedSelectByConditionSql));
+    }
+    /**
+     * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
      * @param propOrColumnNames 属性名或字段名集合(可混合)
      * @return 查询sql
      */
@@ -334,7 +414,40 @@ public class SscTableInfo {
         return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, propOrColumnNames, noCachedSelectByConditionSql));
     }
 
-    public String getNoCachedConditionKey(Set<String> propOrColumnNames) {
+    /*
+     * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
+     * @param conditions 条件对象
+     * @return 查询sql
+     */
+    /*public String getNoCachedConditionSql(String key, Map<Class<?>, SscTableInfo> tableInfoMapping, SscCondition... conditions) {
+        if (noCachedSelectByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedSelectByConditionSql == null) {
+                    noCachedSelectByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, noCachedSelectByConditionSql, tableInfoMapping, conditions));
+    }*/
+
+    public String getNoCachedConditionKey(HashMap<String, Object> conditionMap) {
+        StringBuilder key = new StringBuilder();
+        Iterator<Map.Entry<String, Object>> iterator = conditionMap.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Object> next = iterator.next();
+            // 统一使用 columnName
+            String columnName = classDesc.getColumnByProp(next.getKey());
+            key.append(SpecialValueEnum.getKeyString(next.getValue()));
+            // 字段名不可能存在空格，这里使用空格分隔
+            key.append(columnName);
+            if (iterator.hasNext()) {
+                key.append(" ");
+            }
+        }
+        return key.toString().intern();
+    }
+
+    private String getNoCachedConditionKey(Set<String> propOrColumnNames) {
         StringBuilder key = new StringBuilder();
         Iterator<String> iterator = propOrColumnNames.iterator();
         while (iterator.hasNext()) {
@@ -346,19 +459,130 @@ public class SscTableInfo {
                 key.append(" ");
             }
         }
-        return key.toString();
+        return key.toString().intern();
     }
 
     private Map<String, String> getConditionSql() {
         Map<String, String> map = new HashMap<>();
         // select xx.* from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
         Map<String, Set<String>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propNames) -> {
-            putConditionSqlToMap(null, propNames, map);
-        });
+        conditionProps.forEach((selectorName, propNames) -> putConditionSqlToMap(null, propNames, map));
         return map;
     }
 
+    /*private String putConditionSqlToMap(String key, Map<String, String> map, Map<Class<?>, SscTableInfo> tableInfoMapping, SscCondition... conditions) {
+        StringBuilder builder = new StringBuilder();
+        for (SscCondition condition : conditions) {
+            Class<?> joinClass = condition.getJoinClass();
+            SscTableInfo sscTableInfo;
+            if (joinClass == null) {
+                sscTableInfo = this;
+            } else {
+                sscTableInfo = tableInfoMapping.get(joinClass);
+                if (sscTableInfo == null) {
+                    throw new SscRuntimeException("该类未注册：" + joinClass.getName());
+                }
+            }
+            splicingConditionSql(builder, tableInfoMapping, condition, sscTableInfo);
+        }
+        String value = builder.toString();
+        map.put(key, value);
+        System.out.println(String.format("key: %s, value: %s", key, value));
+        return value;
+    }*/
+
+    private void splicingConditionSql(StringBuilder builder, Map<Class<?>, SscTableInfo> tableInfoMapping, SscCondition condition, SscTableInfo sscTableInfo) {
+        SscConditionEnum type = condition.getType();
+        if (SscConditionEnum.FIRST.equals(type)) {
+            builder.append(" limit ").append(condition.getNumber());
+        } else if (SscConditionEnum.MAX.equals(type)) {
+            builder.append(", ").append(condition.getNumber());
+        } else if (SscConditionEnum.ORDER_BY.equals(type)) {
+            builder.append(" order by ").append(condition.getOrderBy());
+        } else {
+            DataClassDesc desc = sscTableInfo.getClassDesc();
+            if (SscConditionEnum.LEFT_OUTER_JOIN.equals(type)) {
+                builder.append(" left outer join ").append(desc.getTableName());
+            } else if (SscConditionEnum.RIGHT_OUTER_JOIN.equals(type)) {
+                builder.append(" right outer join ").append(desc.getTableName());
+            } else if (SscConditionEnum.INNER_JOIN.equals(type)) {
+                builder.append(" inner join ").append(desc.getTableName());
+            } else if (SscConditionEnum.ON.equals(type)) {
+                builder.append(" on");
+                // TODO 连接条件
+            } else {
+                HashMap<String, Object> fieldMap = condition.getFieldMap();
+                if (fieldMap != null) {
+                    int tableCount = desc.getTableCount();
+                    for (int i = 0; i < tableCount; i ++) {
+                        if (i > 0) {
+                            builder.append("\nunion all \n");
+                        }
+                        String tableName = sscTableInfo.getTableNames()[i];
+                        builder.append("select ").append(tableName).append(".* from ").append(tableName);
+                        Iterator<String> iterator = fieldMap.keySet().iterator();
+                        if (iterator.hasNext()) {
+                            builder.append(" where ");
+                        }
+                        while (iterator.hasNext()) {
+                            String propOrColumnName = iterator.next();
+                            String columnName = classDesc.getColumnByProp(propOrColumnName);
+                            builder.append(columnName).append(" = ?");
+                            if (iterator.hasNext()) {
+                                builder.append(" and ");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private String putConditionSqlToMap(String key, HashMap<String, Object> conditionMap, Map<String, String> map) {
+        StringBuilder builder = new StringBuilder();
+        int tableCount = classDesc.getTableCount();
+        for (int i = 0; i < tableCount; i ++) {
+            if (i > 0) {
+                builder.append("\nunion all \n");
+            }
+            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
+            Iterator<Map.Entry<String, Object>> iterator = conditionMap.entrySet().iterator();
+            if (iterator.hasNext()) {
+                builder.append(" where ");
+            }
+            while (iterator.hasNext()) {
+                Map.Entry<String, Object> next = iterator.next();
+                String columnName = classDesc.getColumnByProp(next.getKey());
+                Object value = next.getValue();
+                builder.append(columnName);
+                if (value instanceof ValueIn) {
+                    builder.append(" in (");
+                    ValueIn<Object> valueIn = (ValueIn<Object>) value;
+                    Iterator<Object> it = valueIn.getValues().iterator();
+                    while (it.hasNext()) {
+                        it.next();
+                        builder.append("?");
+                        if (it.hasNext()) {
+                            builder.append(" ,");
+                        }
+                    }
+                    builder.append(")");
+                } else {
+                    builder.append(SpecialValueEnum.getSqlString(value));
+                }
+                if (iterator.hasNext()) {
+                    builder.append(" and ");
+                }
+            }
+        }
+        String value = builder.toString();
+        if (key == null) {
+            map.put(getNoCachedConditionKey(conditionMap), value);
+        } else {
+            map.put(key, value);
+        }
+        return value;
+    }
     private String putConditionSqlToMap(String key, Set<String> propOrColumnNames, Map<String, String> map) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
@@ -366,8 +590,11 @@ public class SscTableInfo {
             if (i > 0) {
                 builder.append("\nunion all \n");
             }
-            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]).append(" where ");
+            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
             Iterator<String> iterator = propOrColumnNames.iterator();
+            if (iterator.hasNext()) {
+                builder.append(" where ");
+            }
             while (iterator.hasNext()) {
                 String propOrColumnName = iterator.next();
                 String columnName = classDesc.getColumnByProp(propOrColumnName);
@@ -385,4 +612,5 @@ public class SscTableInfo {
         }
         return value;
     }
+
 }
