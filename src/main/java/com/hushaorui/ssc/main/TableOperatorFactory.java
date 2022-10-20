@@ -417,7 +417,7 @@ public class TableOperatorFactory {
                 }
                 String columnType;
                 if (! propColumnTypeMapping.containsKey(propName)) {
-                    columnType = globalConfig.getJavaTypeToTableType().getOrDefault(fieldType, globalConfig.getDefaultTableType());
+                    columnType = getColumnTypeByJavaType(fieldType);
                 } else {
                     columnType = propColumnTypeMapping.get(propName);
                 }
@@ -596,13 +596,13 @@ public class TableOperatorFactory {
                         notUpdateProps.add(propName);
                     }
                     if (fieldDesc.columnType().length() == 0) {
-                        columnType = globalConfig.getJavaTypeToTableType().getOrDefault(fieldType, globalConfig.getDefaultTableType());
+                        columnType = getColumnTypeByJavaType(fieldType);
                     } else {
                         columnType = fieldDesc.columnType();
                     }
                 } else {
                     // 没有 FieldDesc 注解，默认也当作表字段解析
-                    columnType = globalConfig.getJavaTypeToTableType().getOrDefault(fieldType, globalConfig.getDefaultTableType());
+                    columnType = getColumnTypeByJavaType(fieldType);
                 }
                 // 这里目前只考虑到了mysql等和mysql差不多的数据库
                 if ("VARCHAR".equals(columnType)) {
@@ -646,6 +646,11 @@ public class TableOperatorFactory {
             DataClassDesc dataClassDesc = getDataClassDesc(clazz);
             return newTableInfo(clazz, dataClassDesc, globalConfig);
         });
+    }
+
+    private String getColumnTypeByJavaType(Class<?> javaType) {
+        // 枚举默认是字符串类型的
+        return globalConfig.getJavaTypeToTableType().getOrDefault(javaType, javaType.isEnum() ? "VARCHAR" : globalConfig.getDefaultTableType());
     }
 
     private void createTableInfo(String className, SscData sscData) {
