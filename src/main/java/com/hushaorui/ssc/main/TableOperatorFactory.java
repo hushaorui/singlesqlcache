@@ -6,23 +6,20 @@ import com.hushaorui.ssc.common.data.DataClassDesc;
 import com.hushaorui.ssc.common.data.SscCondition;
 import com.hushaorui.ssc.common.data.SscTableInfo;
 import com.hushaorui.ssc.common.em.CacheStatus;
-import com.hushaorui.ssc.config.IdGeneratePolicy;
-import com.hushaorui.ssc.config.JSONSerializer;
-import com.hushaorui.ssc.config.SingleSqlCacheConfig;
-import com.hushaorui.ssc.config.TableSplitPolicy;
+import com.hushaorui.ssc.config.*;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLog;
 import com.hushaorui.ssc.param.*;
 import com.hushaorui.ssc.util.SscStringUtils;
+import javafx.util.Pair;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.yaml.snakeyaml.Yaml;
 
-import java.io.Serializable;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -86,15 +83,27 @@ public class TableOperatorFactory {
      */
     private static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
     private static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
-    /**
-     * 类描述对象集合(映射到数据库的类不存在在这里)
-     */
-    //private static final Map<Class<?>, CommonClassDesc> selectorClassDescMap = new ConcurrentHashMap<>();
 
     public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
         this.jdbcTemplate = jdbcTemplate;
         this.globalConfig = globalConfig;
         this.log = globalConfig.getLogFactory().getLog(TableOperatorFactory.class);
+        String classesDescFilePath = globalConfig.getClassesDescFilePath();
+        if (classesDescFilePath != null) {
+            InputStream inputStream = TableOperatorFactory.class.getClassLoader().getResourceAsStream(classesDescFilePath);
+            if (inputStream != null) {
+                try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
+                    byte[] bytes = new byte[bufferedInputStream.available()];
+                    bufferedInputStream.read(bytes);
+                    String data = new String(bytes, StandardCharsets.UTF_8);
+                    SscDataConfigOfYaml configOfYaml = new Yaml().loadAs(data, SscDataConfigOfYaml.class);
+                    Map<String, SscData> classes = configOfYaml.classes;
+                    classes.forEach(this::createTableInfo);
+                } catch (IOException e) {
+                    log.error(String.format("读取%s文件失败", globalConfig.getClassesDescFilePath()), e);
+                }
+            }
+        }
         if (globalConfig.getMaxInactiveTime() > 0) {
             // 开启缓存
             this.name = TableOperatorFactory.class.getSimpleName() + "-" + name + "-Timer";
@@ -104,8 +113,10 @@ public class TableOperatorFactory {
             saveSwitch = true;
             getSwitch = true;
             log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", globalConfig.getPersistenceIntervalTime(), globalConfig.getMaxInactiveTime()));
-            // 程序关闭前执行
-            Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
+            if (globalConfig.isAddShutdownHook()) {
+                // 程序关闭前执行
+                Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
+            }
         } else {
             saveSwitch = false;
             getSwitch = false;
@@ -261,47 +272,189 @@ public class TableOperatorFactory {
         // 清理所有缓存数据
         idCacheMap.clear();
         // 清理所有唯一字段值缓存
-        //uniqueFieldCacheMap.clear();
-        // 清理数据集缓存
-        //findAllFieldCacheMap.clear();
+        uniqueFieldCacheMap.clear();
         // 最后关闭取缓存开关，保证缓存中的数据都同步到了数据库后才开始从数据库中直接拿数据
         getSwitch = false;
         log.warn("缓存已关闭");
     }
 
-    /*private CommonClassDesc getSelectorClassDesc(Class<?> aClass) {
-        return selectorClassDescMap.computeIfAbsent(aClass, clazz -> {
-            CommonClassDesc classDesc = new CommonClassDesc();
-            // 所有类字段名和它的get方法
-            Map<String, Method> propGetMethods = new HashMap<>();
-            // 所有的类字段名和它的set方法
-            Map<String, Method> propSetMethods = new HashMap<>();
-            Class<?> tempClass = clazz;
-            while (!Object.class.equals(tempClass)) {
-                Field[] declaredFields = tempClass.getDeclaredFields();
-                for (Field field : declaredFields) {
-                    String fieldName = field.getName();
-                    String getMethodName = SscStringUtils.getGetMethodNameByFieldName(field);
-                    Method getMethod;
-                    try {
-                        getMethod = clazz.getMethod(getMethodName);
-                        propGetMethods.put(fieldName, getMethod);
-                    } catch (NoSuchMethodException ignore) {}
-                    String setMethodName = SscStringUtils.getSetMethodNameByFieldName(field);
-                    Method setMethod;
-                    try {
-                        setMethod = clazz.getMethod(setMethodName, field.getType());
-                        propSetMethods.put(fieldName, setMethod);
-                    } catch (NoSuchMethodException ignore) {}
-                }
-                tempClass = tempClass.getSuperclass();
+    private DataClassDesc getDataClassDesc(Class<?> clazz, SscData sscData) {
+        DataClassDesc dataClassDesc = DataClassDesc.transFrom(sscData);
+        dataClassDesc.setDataClass(clazz);
+        {
+            // 表的数量
+            if (dataClassDesc.getTableCount() <= 0) {
+                // 默认不分表
+                dataClassDesc.setTableCount(1);
             }
-            classDesc.setDataClass(clazz);
-            classDesc.setPropGetMethods(propGetMethods);
-            classDesc.setPropSetMethods(propSetMethods);
-            return classDesc;
-        });
-    }*/
+            if (dataClassDesc.getTableName() == null || dataClassDesc.getTableName().isEmpty()) {
+                dataClassDesc.setTableName(generateTableName(clazz));
+            }
+        }
+        if (tableNameMapping.containsKey(dataClassDesc.getTableName())) {
+            // 表名重复
+            throw new SscRuntimeException("Duplicate table name: " + dataClassDesc.getTableName());
+        }
+        // 所有的类字段名和表字段名的映射
+        Map<String, String> propColumnMapping;
+        if (dataClassDesc.getPropColumnMapping() == null) {
+            propColumnMapping = new LinkedHashMap<>();
+        } else {
+            propColumnMapping = dataClassDesc.getPropColumnMapping();
+        }
+        // 所有的表字段名和类字段名的映射
+        Map<String, String> columnPropMapping;
+        if (dataClassDesc.getColumnPropMapping() == null) {
+            columnPropMapping = new LinkedHashMap<>();
+        } else {
+            columnPropMapping = dataClassDesc.getColumnPropMapping();
+        }
+        // 所有的类字段名和数据库表字段类型的映射
+        Map<String, String> propColumnTypeMapping;
+        if (dataClassDesc.getPropColumnTypeMapping() == null) {
+            propColumnTypeMapping = new HashMap<>();
+        } else {
+            propColumnTypeMapping = dataClassDesc.getPropColumnTypeMapping();
+        }
+        // 所有类字段名和它的get方法
+        Map<String, Method> propGetMethods = new HashMap<>();
+        // 所有的类字段名和它的set方法
+        Map<String, Method> propSetMethods = new HashMap<>();
+        // 所有不为空的字段集合
+        Set<String> notNullProps;
+        if (dataClassDesc.getNotNullProps() == null) {
+            notNullProps = new HashSet<>();
+        } else {
+            notNullProps = dataClassDesc.getNotNullProps();
+        }
+        // 有默认值的字段集合
+        Map<String, String> propDefaultValues;
+        if (dataClassDesc.getPropDefaultValues() == null) {
+            propDefaultValues = new HashMap<>();
+        } else {
+            propDefaultValues = dataClassDesc.getPropDefaultValues();
+        }
+        // 所有唯一键的字段集合
+        Map<String, Set<String>> uniqueProps;
+        if (dataClassDesc.getUniqueProps() == null) {
+            uniqueProps = new HashMap<>();
+        } else {
+            uniqueProps = dataClassDesc.getUniqueProps();
+        }
+        // 条件查询字段集合
+        Map<String, List<SscValue>> conditionProps;
+        if (dataClassDesc.getConditionProps() == null) {
+            conditionProps = new HashMap<>();
+        } else {
+            conditionProps = dataClassDesc.getConditionProps();
+        }
+        // 所有不会更新的字段集合
+        Set<String> notUpdateProps;
+        if (dataClassDesc.getNotUpdateProps() == null) {
+            notUpdateProps = new HashSet<>();
+        } else {
+            notUpdateProps = dataClassDesc.getNotUpdateProps();
+        }
+        // 所有被忽略的字段集合
+        Set<String> ignoreProps;
+        if (dataClassDesc.getIgnoreProps() == null) {
+            ignoreProps = new HashSet<>();
+        } else {
+            ignoreProps = dataClassDesc.getIgnoreProps();
+        }
+
+        // id字段的名称
+        String idPropName = dataClassDesc.getIdPropName();
+        // 使用使用id生成策略
+        /*Boolean idIsAuto;
+        if (dataClassDesc.isUseIdGeneratePolicy()) {
+            idIsAuto = true;
+        }*/
+        Class<?> tempClass = clazz;
+        while (!Object.class.equals(tempClass)) {
+            Field[] declaredFields = tempClass.getDeclaredFields();
+            for (Field field : declaredFields) {
+                field.setAccessible(true);
+                if (Modifier.isStatic(field.getModifiers())) {
+                    // 静态字段，不能当作属性字段
+                    continue;
+                }
+                // 类字段名
+                String propName = field.getName();
+                if (ignoreProps.contains(propName)) {
+                    continue;
+                }
+                // 表字段名
+                String columnName;
+                if (! propColumnMapping.containsKey(propName)) {
+                    // 配置中没有字段名，生成一个
+                    columnName = generateColumnName(propName);
+                } else {
+                    columnName = propColumnMapping.get(propName);
+                }
+                if (columnPropMapping.containsKey(columnName)) {
+                    throw new SscRuntimeException(String.format("Duplicate column name: %s in class: %s", columnName, clazz.getName()));
+                }
+                // 将类字段名和表字段名添加映射
+                propColumnMapping.put(propName, columnName);
+                columnPropMapping.put(columnName, propName);
+                Class<?> fieldType = field.getType();
+                String getMethodName = SscStringUtils.getGetMethodNameByFieldName(field);
+                Method getMethod;
+                try {
+                    getMethod = clazz.getMethod(getMethodName);
+                    propGetMethods.put(propName, getMethod);
+                } catch (NoSuchMethodException e) {
+                    throw new SscRuntimeException(String.format("Field has no getter method, name: %s in class: %s", propName, clazz.getName()));
+                }
+                String setMethodName = SscStringUtils.getSetMethodNameByFieldName(field);
+                Method setMethod;
+                try {
+                    setMethod = clazz.getMethod(setMethodName, fieldType);
+                    propSetMethods.put(propName, setMethod);
+                } catch (NoSuchMethodException e) {
+                    throw new SscRuntimeException(String.format("Field has no setter method, name: %s in class: %s", propName, clazz.getName()));
+                }
+                String columnType;
+                if (! propColumnTypeMapping.containsKey(propName)) {
+                    columnType = globalConfig.getJavaTypeToTableType().getOrDefault(fieldType, globalConfig.getDefaultTableType());
+                } else {
+                    columnType = propColumnTypeMapping.get(propName);
+                }
+                // 这里目前只考虑到了mysql等和mysql差不多的数据库
+                if ("VARCHAR".equals(columnType)) {
+                    columnType = String.format("%s(%s)", columnType, globalConfig.getDefaultLength());
+                }
+                propColumnTypeMapping.put(propName, columnType);
+            }
+            tempClass = tempClass.getSuperclass();
+        }
+        if (propColumnMapping.isEmpty()) {
+            throw new SscRuntimeException("No data in the table: " + dataClassDesc.getTableName());
+        }
+        if (idPropName == null) {
+            // 没有标注id，则第一个字段为id
+            idPropName = propColumnMapping.keySet().iterator().next();
+            // 默认使用id生成策略
+            //idIsAuto = true;
+        }
+        dataClassDesc.setColumnPropMapping(columnPropMapping);
+        dataClassDesc.setPropColumnMapping(propColumnMapping);
+        dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping);
+        dataClassDesc.setPropGetMethods(propGetMethods);
+        dataClassDesc.setPropSetMethods(propSetMethods);
+        dataClassDesc.setIdPropName(idPropName);
+        //dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
+        dataClassDesc.setNotNullProps(notNullProps);
+        dataClassDesc.setPropDefaultValues(propDefaultValues);
+        dataClassDesc.setUniqueProps(uniqueProps);
+        dataClassDesc.setConditionProps(conditionProps);
+        // id是不进行更新的
+        notUpdateProps.add(idPropName);
+        dataClassDesc.setNotUpdateProps(notUpdateProps);
+        dataClassDesc.setIgnoreProps(ignoreProps);
+        return dataClassDesc;
+    }
 
     private DataClassDesc getDataClassDesc(Class<?> clazz) {
         DataClassDesc dataClassDesc = new DataClassDesc();
@@ -345,11 +498,11 @@ public class TableOperatorFactory {
         // 所有唯一键的字段集合
         Map<String, Set<String>> uniqueProps = new HashMap<>();
         // 条件查询字段集合
-        Map<String, Map<String, SpecialValueEnum>> conditionProps = new HashMap<>();
+        Map<String, List<SscValue>> conditionProps = new HashMap<>();
         // 所有不会更新的字段集合
         Set<String> notUpdateProps = new HashSet<>();
-        // 所有不需要缓存的字段集合
-        Set<String> notCachedProps = new HashSet<>();
+        // 所有被忽略的字段集合
+        Set<String> ignoreProps = new HashSet<>();
 
         // id字段的名称
         String idPropName = null;
@@ -372,8 +525,9 @@ public class TableOperatorFactory {
                 if (fieldDesc == null) {
                     columnName = generateColumnName(propName);
                 } else {
-                    if (fieldDesc.noneSave()) {
+                    if (fieldDesc.ignore()) {
                         // 该字段不参与数据库操作
+                        ignoreProps.add(propName);
                         continue;
                     }
                     if (fieldDesc.isId()) {
@@ -429,20 +583,17 @@ public class TableOperatorFactory {
                         uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
                     }
                     String[] selectorNames = fieldDesc.selectorNames();
-                    SpecialValueEnum[] specialValueEnums = fieldDesc.selectorType();
+                    ValueConditionEnum[] valueConditionEnums = fieldDesc.selectorType();
                     for (int m = 0; m < selectorNames.length; m ++) {
                         String selectorName = selectorNames[m].trim();
                         if (selectorName.length() == 0) {
                             continue;
                         }
-                        SpecialValueEnum type = specialValueEnums[m % specialValueEnums.length];
-                        conditionProps.computeIfAbsent(selectorName, key -> new HashMap<>()).put(propName, type);
+                        ValueConditionEnum type = valueConditionEnums[m % valueConditionEnums.length];
+                        conditionProps.computeIfAbsent(selectorName, key -> new ArrayList<>()).add(new SscValue(propName, type));
                     }
                     if (fieldDesc.isNotUpdate()) {
                         notUpdateProps.add(propName);
-                    }
-                    if (!fieldDesc.cached()) {
-                        notCachedProps.add(propName);
                     }
                     if (fieldDesc.columnType().length() == 0) {
                         columnType = globalConfig.getJavaTypeToTableType().getOrDefault(fieldType, globalConfig.getDefaultTableType());
@@ -472,28 +623,48 @@ public class TableOperatorFactory {
         }
         dataClassDesc.setTableCount(tableCount);
         dataClassDesc.setTableName(tableName);
-        dataClassDesc.setColumnPropMapping(columnPropMapping);
-        dataClassDesc.setPropColumnMapping(propColumnMapping);
-        dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping);
-        dataClassDesc.setPropGetMethods(propGetMethods);
-        dataClassDesc.setPropSetMethods(propSetMethods);
+        dataClassDesc.setColumnPropMapping(columnPropMapping.isEmpty() ? Collections.emptyMap() : columnPropMapping);
+        dataClassDesc.setPropColumnMapping(propColumnMapping.isEmpty() ? Collections.emptyMap() : propColumnMapping);
+        dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping.isEmpty() ? Collections.emptyMap() : propColumnTypeMapping);
+        dataClassDesc.setPropGetMethods(propGetMethods.isEmpty() ? Collections.emptyMap() : propGetMethods);
+        dataClassDesc.setPropSetMethods(propSetMethods.isEmpty() ? Collections.emptyMap() : propSetMethods);
         dataClassDesc.setIdPropName(idPropName);
         dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
-        dataClassDesc.setNotNullProps(notNullProps);
-        dataClassDesc.setPropDefaultValues(propDefaultValues);
-        dataClassDesc.setUniqueProps(uniqueProps);
-        dataClassDesc.setConditionProps(conditionProps);
+        dataClassDesc.setNotNullProps(notNullProps.isEmpty() ? Collections.emptySet() : notNullProps);
+        dataClassDesc.setPropDefaultValues(propDefaultValues.isEmpty() ? Collections.emptyMap() : propDefaultValues);
+        dataClassDesc.setUniqueProps(uniqueProps.isEmpty() ? Collections.emptyMap() : uniqueProps);
+        dataClassDesc.setConditionProps(conditionProps.isEmpty() ? Collections.emptyMap() : conditionProps);
         // id是不进行更新的
         notUpdateProps.add(idPropName);
-        dataClassDesc.setNotUpdateProps(notUpdateProps);
-        dataClassDesc.setNotCachedProps(notCachedProps);
+        dataClassDesc.setNotUpdateProps(notUpdateProps.isEmpty() ? Collections.emptySet() : notUpdateProps);
+        dataClassDesc.setIgnoreProps(ignoreProps.isEmpty() ? Collections.emptySet() : ignoreProps);
         return dataClassDesc;
     }
 
     private SscTableInfo getTableInfoNotNull(Class<?> dataClass) {
         return tableInfoMapping.computeIfAbsent(dataClass, clazz -> {
             DataClassDesc dataClassDesc = getDataClassDesc(clazz);
-            SscTableInfo sscTableInfo = new SscTableInfo(dataClassDesc, globalConfig);
+            return newTableInfo(clazz, dataClassDesc, globalConfig);
+        });
+    }
+
+    private void createTableInfo(String className, SscData sscData) {
+        Class<?> clazz;
+        try {
+            clazz = Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            log.error("创建类描述对象失败：" + className, e);
+            return;
+        }
+        DataClassDesc dataClassDesc = getDataClassDesc(clazz, sscData);
+        tableInfoMapping.put(clazz, newTableInfo(clazz, dataClassDesc, globalConfig));
+    }
+
+    private SscTableInfo newTableInfo(Class<?> clazz, DataClassDesc dataClassDesc, SingleSqlCacheConfig globalConfig) {
+        Class<? extends SscTableInfo> tableInfoClass = globalConfig.getTableInfoClass();
+        try {
+            Constructor<? extends SscTableInfo> constructor = tableInfoClass.getConstructor(DataClassDesc.class, SingleSqlCacheConfig.class);
+            SscTableInfo sscTableInfo = constructor.newInstance(dataClassDesc, globalConfig);
             tableNameMapping.put(dataClassDesc.getTableName(), sscTableInfo);
             switch (globalConfig.getLaunchPolicy()) {
                 case DROP_TABLE: {
@@ -505,18 +676,13 @@ public class TableOperatorFactory {
                     // 删除表
                     dropTable(sscTableInfo.getDropTableSql());
                     // 然后创建表
-                    createTable(sscTableInfo.getCreateTableSql(), sscTableInfo.getUniqueCreateSqlMap());
+                    createTable(sscTableInfo.getCreateTableSql(), null);
                     break;
                 }
                 case CREATE_TABLE_IF_NOT_EXIST: {
-                    createTable(sscTableInfo.getCreateTableSql(), sscTableInfo.getUniqueCreateSqlMap());
+                    createTable(sscTableInfo.getCreateTableSql(), null);
                     break;
                 }
-                /*case MODIFY_COLUMN_IF_UPDATE: {
-                    createTable(sscTableInfo.getCreateTableSql());
-                    // TODO 待开发
-                    break;
-                }*/
             }
             //System.out.println(globalConfig.getJsonSerializer().toJsonString(sscTableInfo, SerializerFeature.PrettyFormat));
             IdGeneratePolicy idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
@@ -558,7 +724,10 @@ public class TableOperatorFactory {
             }
             log.info(String.format("class: %s 数据类注册成功", clazz.getName()));
             return sscTableInfo;
-        });
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+            log.error("创建TableInfo失败", e);
+            return null;
+        }
     }
 
     /**
@@ -762,101 +931,29 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(HashMap<String, Object> conditionMap) {
-                String key = sscTableInfo.getNoCachedConditionKey(conditionMap);
-                String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, conditionMap));
-                Object[] params = getConditionParams(classDesc, conditionMap);
+            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
+                String key = sscTableInfo.getNoCachedConditionKey(conditions);
+                String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, conditions));
+                Object[] params = getConditionParams(classDesc, conditions);
                 return jdbcTemplate.query(sql, (RowMapper<Object>) getRowMapper(), params);
             }
-
-            /*@Override
-            public List<Object> selectByCondition(SscCondition... conditions) {
-                String key = getNoCachedConditionKey(classDesc, conditions);
-                String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, tableInfoMapping, conditions));
-                // TODO
-                return null;
-            }*/
 
             @Override
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
-
-            /*@Override
-            public List<Object> select(CommonSelector<Object> commonSelector) {
-                CommonClassDesc commonClassDesc = getSelectorClassDesc(commonSelector.getClass());
-                StringBuilder key = new StringBuilder();
-                Integer firstResult = null;
-                Integer maxResult = null;
-                String orderBy = null;
-                for (Map.Entry<String, Method> entry : commonClassDesc.getPropGetMethods().entrySet()) {
-                    String fieldName = entry.getKey();
-                    Object fieldValue;
-                    try {
-                        fieldValue = entry.getValue().invoke(commonSelector);
-                    } catch (IllegalAccessException | InvocationTargetException e) {
-                        throw new SscRuntimeException(e);
-                    }
-                    if (fieldValue == null) {
-                        // 值为空的字段，不计入sql中
-                        continue;
-                    }
-                    if ("firstResult".equals(fieldName)) {
-                        firstResult = (Integer) fieldValue;
-                    } else if ("maxResult".equals(fieldName)) {
-                        maxResult = (Integer) fieldValue;
-                    } else if ("orderBy".equals(fieldName)) {
-                        orderBy = (String) fieldValue;
-                    } else {
-                        // 其他类 model也算作在内
-                        SscTableInfo tableInfo = tableInfoMapping.get(fieldValue.getClass());
-                        if (tableInfo == null) {
-                            // 不是数据库表映射类，看是否是一些特殊类
-                        } else {
-                            // 是数据类
-                            DataClassDesc desc = tableInfo.getClassDesc();
-                            for (Map.Entry<String, Method> dataEntry : desc.getPropGetMethods().entrySet()) {
-                                Object value;
-                                try {
-                                    value = dataEntry.getValue().invoke(fieldValue);
-                                } catch (IllegalAccessException | InvocationTargetException e) {
-                                    throw new SscRuntimeException(e);
-                                }
-                                if (value != null) {
-                                    // 不为空的字段，都算作key的一部分
-                                    key.append(" ").append(dataEntry.getKey());
-                                }
-                            }
-                        }
-                    }
-                }
-                if (firstResult != null) {
-                    key.append(" firstResult");
-                }
-                if (maxResult != null) {
-                    key.append(" maxResult");
-                }
-                if (orderBy != null) {
-                    key.append(" orderBy");
-                }
-                *//*String sql = sscTableInfo.getCommonSelectorSqlNotNull(commonSelector, selector -> {
-
-                });*//*
-                // select xx.* from xx where xx = ? and xx = ? order by xx limit xx, xx union all select xx.* from xx where xx = ? and xx = ? order by xx limit xx, xx
-                // xx outer join xx on xx.xx = xx.xx
-                StringBuilder sql = new StringBuilder();
-
-                return null;
-            }*/
         });
     }
 
-    private Object[] getConditionParams(DataClassDesc classDesc, Map<String, Object> conditionMap) {
+    private Object[] getConditionParams(DataClassDesc classDesc, Pair<String, Object>... conditions) {
+        if (conditions == null || conditions.length == 0) {
+            return new Object[0];
+        }
         int tableCount = classDesc.getTableCount();
         List<Object> params = new ArrayList<>();
         int index = 0;
-        for (Map.Entry<String, Object> entry : conditionMap.entrySet()) {
-            Object value = entry.getValue();
+        for (Pair<String, Object> condition : conditions) {
+            Object value = condition.getValue();
             if (value instanceof ValueIn) {
                 ValueIn<Object> valueIn = (ValueIn<Object>) value;
                 params.addAll(valueIn.getValues());
@@ -1174,26 +1271,26 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(HashMap<String, Object> conditionMap) {
+            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditionMap));
-                    return doSelectByCondition(getNoCachedOperator(clazz), conditionMap);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    return doSelectByCondition(getNoCachedOperator(clazz), conditions);
                 }
 
-                String key = sscTableInfo.getNoCachedConditionKey(conditionMap);
+                String key = sscTableInfo.getNoCachedConditionKey(conditions);
                 if (! sscTableInfo.getSelectByConditionSql().containsKey(key)) {
                     // 不使用缓存
-                    return doSelectByCondition(getNoCachedOperator(clazz), conditionMap);
+                    return doSelectByCondition(getNoCachedOperator(clazz), conditions);
                 }
                 Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
                         .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
-                Object uniqueValue = getUniqueValueByMap(conditionMap);
+                Object uniqueValue = getUniqueValueByMap(conditions);
                 ObjectListCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditionMap));
+                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     // 缓存击穿，查询数据库
-                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz), conditionMap);
+                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz), conditions);
                     // 放入缓存
                     ObjectListCache objectListCache = new ObjectListCache();
                     if (dataList != null) {
@@ -1212,7 +1309,7 @@ public class TableOperatorFactory {
                     objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
                     long now = System.currentTimeMillis();
                     objectListCache.setLastUseTime(now);
-                    cacheMap.putIfAbsent(getUniqueValueByMap(conditionMap), objectListCache);
+                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
                     return dataList;
                 } else {
                     if (cache.getCacheStatus().isDelete()) {
@@ -1295,25 +1392,25 @@ public class TableOperatorFactory {
         uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
-    private Object getUniqueValueByMap(HashMap<String, Object> conditionMap) {
-        if (conditionMap == null || conditionMap.isEmpty()) {
+    private Object getUniqueValueByMap(Pair<String, Object>... conditions) {
+        if (conditions == null || conditions.length == 0) {
             return "";
         }
         JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
-        int size = conditionMap.size();
+        int size = conditions.length;
         if (size == 1) {
-            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(conditionMap.values().iterator().next()));
+            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(conditions[0].getValue()));
         } else {
             // 联合字段
             StringBuilder builder1 = new StringBuilder();
             StringBuilder builder2 = new StringBuilder();
             int halfSize = size / 2;
             int i = 0;
-            for (Object value : conditionMap.values()) {
+            for (Pair<String, Object> pair : conditions) {
                 if (i <= halfSize) {
-                    builder1.append(jsonSerializer.toJsonString(value));
+                    builder1.append(jsonSerializer.toJsonString(pair.getValue()));
                 } else {
-                    builder2.append(jsonSerializer.toJsonString(value));
+                    builder2.append(jsonSerializer.toJsonString(pair.getValue()));
                 }
                 i++;
             }
@@ -1399,14 +1496,14 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    private List<Object> doSelectByCondition(Operator<?> operator, HashMap<String, Object> conditionMap) {
+    private List<Object> doSelectByCondition(Operator<?> operator, Pair<String, Object>... conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
             Method insertMethod = operatorClass.getMethod("selectByCondition", HashMap.class);
-            return (List<Object>) insertMethod.invoke(operator, conditionMap);
+            return (List<Object>) insertMethod.invoke(operator, conditions);
         } catch (Exception e) {
-            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), conditionMap), e);
+            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), conditions), e);
         }
     }
 
@@ -1531,6 +1628,29 @@ public class TableOperatorFactory {
                 return (int) method.invoke(policy, comparableId, tableCount);
             } catch (Exception e) {
                 throw new SscRuntimeException(e);
+            }
+        }
+    }
+
+    public void outputClassDescYamlData(String filePath) throws IOException {
+        SscDataConfigOfYaml configOfYaml = new SscDataConfigOfYaml();
+        Map<String, SscData> classes = new HashMap<>();
+        configOfYaml.classes = classes;
+        for (SscTableInfo tableInfo : tableNameMapping.values()) {
+            DataClassDesc classDesc = tableInfo.getClassDesc();
+            classes.put(classDesc.getDataClass().getName(), SscData.transFrom(classDesc));
+        }
+        if (filePath != null) {
+            File file = new File(filePath);
+            if (! file.exists()) {
+                file.createNewFile();
+            }
+            String dump = new Yaml().dumpAsMap(configOfYaml);
+            //String dump = new Yaml().dumpAll(classes.entrySet().iterator());
+            //String dump = new Yaml().dumpAs(configOfYaml, Tag.MAP, null);
+            try (FileOutputStream outputStream = new FileOutputStream(file)) {
+                outputStream.write(dump.getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
             }
         }
     }

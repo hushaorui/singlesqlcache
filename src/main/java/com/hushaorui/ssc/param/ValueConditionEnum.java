@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-public enum SpecialValueEnum {
+public enum ValueConditionEnum {
     ValueBetween(ValueBetween.class, " between", " between ? and ?"),
     ValueGreatOrEqual(ValueGreatOrEqual.class, " >=", " >= ?"),
     ValueGreatThan(ValueGreatThan.class, " >", " > ?"),
@@ -17,7 +17,7 @@ public enum SpecialValueEnum {
     Equal(Object.class, "", " = ?"),
     ;
 
-    SpecialValueEnum(Class<?> clazz, String keyString, String sqlString) {
+    ValueConditionEnum(Class<?> clazz, String keyString, String sqlString) {
         this.clazz = clazz;
         this.keyString = keyString;
         this.sqlString = sqlString;
@@ -26,11 +26,11 @@ public enum SpecialValueEnum {
     private Class<?> clazz;
     private String keyString;
     private String sqlString;
-    private static final Map<Class<?>, SpecialValueEnum> mapping;
+    private static final Map<Class<?>, ValueConditionEnum> mapping;
     static {
-        SpecialValueEnum[] values = SpecialValueEnum.values();
-        Map<Class<?>, SpecialValueEnum> map = new HashMap<>(values.length, 1.5f);
-        for (SpecialValueEnum valueEnum : values) {
+        ValueConditionEnum[] values = ValueConditionEnum.values();
+        Map<Class<?>, ValueConditionEnum> map = new HashMap<>(values.length, 1.5f);
+        for (ValueConditionEnum valueEnum : values) {
             map.put(valueEnum.clazz, valueEnum);
         }
         mapping = Collections.unmodifiableMap(map);

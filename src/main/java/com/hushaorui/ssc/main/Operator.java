@@ -1,10 +1,9 @@
 package com.hushaorui.ssc.main;
 
-import com.hushaorui.ssc.common.data.SscCondition;
+import javafx.util.Pair;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.Serializable;
-import java.util.HashMap;
 import java.util.List;
 import java.util.function.Function;
 
@@ -59,10 +58,10 @@ public interface Operator<DATA> {
 
     /**
      * 根据条件查询数据
-     * @param conditionMap 条件集合 key: 类属性名或表字段名 ,value: 值
+     * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
-    List<DATA> selectByCondition(HashMap<String, Object> conditionMap);
+    List<DATA> selectByCondition(Pair<String, Object>... conditions);
 
     /**
      * 获取数据库操作类

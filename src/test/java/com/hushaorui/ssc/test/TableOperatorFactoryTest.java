@@ -11,6 +11,7 @@ import com.hushaorui.ssc.param.ValueGreatThan;
 import com.hushaorui.ssc.param.ValueIsNotNull;
 import com.hushaorui.ssc.param.ValueIsNull;
 import com.hushaorui.ssc.test.common.TestPlayer;
+import javafx.util.Pair;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,7 +21,6 @@ import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 
 public class TableOperatorFactoryTest {
@@ -187,12 +187,11 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_1() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            HashMap<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("username", "张三1");
-            conditionMap.put("third_type", "morlia1");
-            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            Pair<String, Object> condition1 = new Pair<>("username", "张三1");
+            Pair<String, Object> condition2 = new Pair<>("third_type", "morlia1");
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1, condition2);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
-            testPlayers = operator.selectByCondition(conditionMap);
+            testPlayers = operator.selectByCondition(condition1, condition2);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
@@ -203,11 +202,10 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueIsNotNull() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            HashMap<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("lastLoginIp", ValueIsNotNull.IS_NOT_NULL);
-            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            Pair<String, Object> condition1 = new Pair<>("lastLoginIp", ValueIsNotNull.IS_NOT_NULL);
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
-            testPlayers = operator.selectByCondition(conditionMap);
+            testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
@@ -218,11 +216,10 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueIsNull() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            HashMap<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("lastLoginIp", ValueIsNull.IS_NULL);
-            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            Pair<String, Object> condition1 = new Pair<>("lastLoginIp", ValueIsNull.IS_NULL);
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
-            testPlayers = operator.selectByCondition(conditionMap);
+            testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
@@ -233,11 +230,10 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueGreatThan() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            HashMap<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("user_id", new ValueGreatThan<>(5L));
-            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            Pair<String, Object> condition1 = new Pair<>("user_id", new ValueGreatThan<>(5L));
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
-            testPlayers = operator.selectByCondition(conditionMap);
+            testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
@@ -248,11 +244,10 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueBetween() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            HashMap<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("user_id", new ValueBetween<>(5L, 6L));
-            List<TestPlayer> testPlayers = operator.selectByCondition(conditionMap);
+            Pair<String, Object> condition1 = new Pair<>("user_id", new ValueBetween<>(5L, 6L));
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
-            testPlayers = operator.selectByCondition(conditionMap);
+            testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
         } catch (Exception e) {
             e.printStackTrace();
@@ -307,5 +302,15 @@ public class TableOperatorFactoryTest {
 
         dataSource.init();
         return dataSource;
+    }
+
+    @Test
+    public void test_getAllClassDescYamlData() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            tableOperatorFactory.outputClassDescYamlData("C:\\Users\\Win10\\Desktop\\ssc.yml");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

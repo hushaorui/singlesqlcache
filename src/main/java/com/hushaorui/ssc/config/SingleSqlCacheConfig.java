@@ -1,6 +1,8 @@
 package com.hushaorui.ssc.config;
 
+import com.hushaorui.ssc.common.data.SscTableInfo;
 import com.hushaorui.ssc.common.em.ColumnNameStyle;
+import com.hushaorui.ssc.common.em.SscDataSourceType;
 import com.hushaorui.ssc.common.em.SscLaunchPolicy;
 import com.hushaorui.ssc.common.em.TableNameStyle;
 import com.hushaorui.ssc.exception.SscRuntimeException;
@@ -9,8 +11,6 @@ import com.hushaorui.ssc.log.SscLogFactoryImpl;
 import com.hushaorui.ssc.main.*;
 import javafx.util.Pair;
 
-import java.sql.Timestamp;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
@@ -31,13 +31,24 @@ public class SingleSqlCacheConfig {
     private String uniqueTableNameSuffix = "_assist_table";
     /** 唯一键辅助表的id名称，如果和你的表字段名称重复，请重设此值 */
     private String uniqueTableIdName = "assist_id";
+    /** 中心配置文件的路径(类路径下) */
+    private String classesDescFilePath = "ssc.yml";
     /** 日志打印类 */
     private SscLogFactory logFactory = SscLogFactoryImpl.getInstance();
+    /** 数据库sql拼接描述类 */
+    private Class<? extends SscTableInfo> tableInfoClass;
+    /** 数据库类型 */
+    private String dataSourceType;
+    /** java类型和表类型的映射 */
+    private Map<Class<?>, String> javaTypeToTableType;
+    /**
+     * @see TableOperatorFactory
+     * 是否直接添加程序关闭前的监听(业务很复杂时请关闭，主动调用 beforeShutdown 方法)
+     */
+    private boolean addShutdownHook = true;
 
     /** json数据转换器 */
     private JSONSerializer jsonSerializer;
-    /** java类型和表类型的映射 */
-    private Map<Class<?>, String> javaTypeToTableType = new HashMap<>();
     {
         try {
             // 为了解耦
@@ -45,26 +56,6 @@ public class SingleSqlCacheConfig {
         } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
             throw new SscRuntimeException(e);
         }
-
-        javaTypeToTableType.put(String.class, "VARCHAR");
-        javaTypeToTableType.put(byte.class, "TINYINT");
-        javaTypeToTableType.put(Byte.class, "TINYINT");
-        javaTypeToTableType.put(short.class, "SMALLINT");
-        javaTypeToTableType.put(Short.class, "SMALLINT");
-        javaTypeToTableType.put(int.class, "INT");
-        javaTypeToTableType.put(Integer.class, "INT");
-        javaTypeToTableType.put(long.class, "BIGINT");
-        javaTypeToTableType.put(Long.class, "BIGINT");
-        javaTypeToTableType.put(float.class, "FLOAT");
-        javaTypeToTableType.put(Float.class, "FLOAT");
-        javaTypeToTableType.put(double.class, "DOUBLE");
-        javaTypeToTableType.put(Double.class, "DOUBLE");
-        javaTypeToTableType.put(boolean.class, "BOOL");
-        javaTypeToTableType.put(Boolean.class, "BOOL");
-        javaTypeToTableType.put(char.class, "VARCHAR");
-        javaTypeToTableType.put(Character.class, "VARCHAR");
-        javaTypeToTableType.put(Timestamp.class, "TIMESTAMP");
-        javaTypeToTableType.put(Date.class, "DATETIME");
     }
     /** 默认情况下表格字段的类型 */
     private String defaultTableType = "JSON";
@@ -168,6 +159,47 @@ public class SingleSqlCacheConfig {
         this.uniqueTableIdName = uniqueTableIdName;
     }
 
+    public String getClassesDescFilePath() {
+        return classesDescFilePath;
+    }
+
+    public void setClassesDescFilePath(String classesDescFilePath) {
+        this.classesDescFilePath = classesDescFilePath;
+    }
+
+    public Class<? extends SscTableInfo> getTableInfoClass() {
+        if (tableInfoClass == null) {
+            setDataSourceType(SscDataSourceType.Mysql.name());
+        }
+        return tableInfoClass;
+    }
+
+    public void setTableInfoClass(Class<? extends SscTableInfo> tableInfoClass) {
+        this.tableInfoClass = tableInfoClass;
+    }
+
+    public String getDataSourceType() {
+        return dataSourceType;
+    }
+
+    public void setDataSourceType(String dataSourceType) {
+        this.dataSourceType = dataSourceType;
+        try {
+            // 如果是已经支持的数据库，则对应的 类和类型字典 从枚举中获得
+            SscDataSourceType sourceType = SscDataSourceType.valueOf(dataSourceType);
+            setTableInfoClass(sourceType.getTableInfoClass());
+            setJavaTypeToTableType(sourceType.getJavaTypeToTableTypeMap());
+        } catch (Exception ignore) {}
+    }
+
+    public boolean isAddShutdownHook() {
+        return addShutdownHook;
+    }
+
+    public void setAddShutdownHook(boolean addShutdownHook) {
+        this.addShutdownHook = addShutdownHook;
+    }
+
     public JSONSerializer getJsonSerializer() {
         return jsonSerializer;
     }
@@ -177,6 +209,9 @@ public class SingleSqlCacheConfig {
     }
 
     public Map<Class<?>, String> getJavaTypeToTableType() {
+        if (javaTypeToTableType == null) {
+            setDataSourceType(SscDataSourceType.Mysql.name());
+        }
         return javaTypeToTableType;
     }
 

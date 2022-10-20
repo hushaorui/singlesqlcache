@@ -1,0 +1,86 @@
+classes:
+  com.hushaorui.ssc.test.common.TestPlayer:
+    conditionProps:
+      selectNewPlayer:
+      - !!com.hushaorui.ssc.config.SscValue
+        condition: ValueGreatOrEqual
+        propName: createTime
+      - !!com.hushaorui.ssc.config.SscValue
+        condition: ValueLessThan
+        propName: createTime
+    fieldMap:
+      lastLoginTime:
+        columnName: last_login_time
+        columnType: BIGINT
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      thirdId:
+        columnName: third_id
+        columnType: BIGINT
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      createTime:
+        columnName: create_time
+        columnType: BIGINT
+        defaultValue: null
+        ignore: false
+        notNull: true
+        notUpdate: true
+      primarySchoolStartDay:
+        columnName: primary_school_start_day
+        columnType: DATETIME
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      userId:
+        columnName: user_id
+        columnType: BIGINT
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: true
+      thirdType:
+        columnName: third_type
+        columnType: VARCHAR(64)
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      username:
+        columnName: username
+        columnType: VARCHAR(128)
+        defaultValue: null
+        ignore: false
+        notNull: true
+        notUpdate: false
+      birthdayTime:
+        columnName: birthday_time
+        columnType: TIMESTAMP
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      lastLoginIp:
+        columnName: last_login_ip
+        columnType: VARCHAR(64)
+        defaultValue: null
+        ignore: false
+        notNull: false
+        notUpdate: false
+      extraString:
+        ignore: true
+    idPropName: userId
+    tableCount: 4
+    tableName: test_player
+    uniqueProps:
+      third_type_third_id:
+      - thirdId
+      - thirdType
+      username:
+      - username
+    useIdGeneratePolicy: true

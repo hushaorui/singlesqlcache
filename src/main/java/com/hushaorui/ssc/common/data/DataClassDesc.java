@@ -1,9 +1,10 @@
 package com.hushaorui.ssc.common.data;
 
-import com.hushaorui.ssc.param.SpecialValueEnum;
+import com.hushaorui.ssc.config.SscData;
+import com.hushaorui.ssc.config.SscField;
+import com.hushaorui.ssc.config.SscValue;
 
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 数据类描述
@@ -28,11 +29,11 @@ public class DataClassDesc extends CommonClassDesc {
     /** 所有唯一键的字段集合 */
     private Map<String, Set<String>> uniqueProps;
     /** 所有需要添加缓存的条件查询字段集合 */
-    private Map<String, Map<String, SpecialValueEnum>> conditionProps;
+    private Map<String, List<SscValue>> conditionProps;
     /** 所有不会更新的字段集合 */
     private Set<String> notUpdateProps;
-    /** 所有不需要缓存的字段集合 */
-    private Set<String> notCachedProps;
+    /** 所有忽略的字段集合 */
+    private Set<String> ignoreProps;
 
     /** id字段的名称 */
     private String idPropName;
@@ -104,11 +105,11 @@ public class DataClassDesc extends CommonClassDesc {
         this.uniqueProps = uniqueProps;
     }
 
-    public Map<String, Map<String, SpecialValueEnum>> getConditionProps() {
+    public Map<String, List<SscValue>> getConditionProps() {
         return conditionProps;
     }
 
-    public void setConditionProps(Map<String, Map<String, SpecialValueEnum>> conditionProps) {
+    public void setConditionProps(Map<String, List<SscValue>> conditionProps) {
         this.conditionProps = conditionProps;
     }
 
@@ -120,12 +121,12 @@ public class DataClassDesc extends CommonClassDesc {
         this.notUpdateProps = notUpdateProps;
     }
 
-    public Set<String> getNotCachedProps() {
-        return notCachedProps;
+    public Set<String> getIgnoreProps() {
+        return ignoreProps;
     }
 
-    public void setNotCachedProps(Set<String> notCachedProps) {
-        this.notCachedProps = notCachedProps;
+    public void setIgnoreProps(Set<String> ignoreProps) {
+        this.ignoreProps = ignoreProps;
     }
 
     public String getIdPropName() {
@@ -146,5 +147,49 @@ public class DataClassDesc extends CommonClassDesc {
 
     public String getColumnByProp(String propName) {
         return propColumnMapping.getOrDefault(propName, propName);
+    }
+
+    public static DataClassDesc transFrom(SscData data) {
+        DataClassDesc classDesc = new DataClassDesc();
+        classDesc.tableName = data.tableName;
+        classDesc.tableCount = data.tableCount;
+        classDesc.idPropName = data.idPropName;
+        classDesc.conditionProps = data.conditionProps;
+        classDesc.uniqueProps = new HashMap<>();
+        data.uniqueProps.forEach((uniqueName, list) -> classDesc.uniqueProps.put(uniqueName, new HashSet<>(list)));
+        // 默认为true，使用id自动生成策略
+        classDesc.useIdGeneratePolicy = data.useIdGeneratePolicy == null ? true : data.useIdGeneratePolicy;
+
+        Map<String, String> propColumnMapping = new HashMap<>();
+        Map<String, String> propColumnTypeMapping = new HashMap<>();
+        Map<String, String> propDefaultValues = new HashMap<>();
+        Set<String> ignoreProps = new HashSet<>();
+        Set<String> notNullProps = new HashSet<>();
+        Set<String> notUpdateProps = new HashSet<>();
+        Map<String, SscField> fieldMap = data.fieldMap;
+        if (fieldMap != null) {
+            fieldMap.forEach((propName, field) -> {
+                if (field.ignore) {
+                    ignoreProps.add(propName);
+                    return;
+                }
+                propColumnMapping.put(propName, field.columnName);
+                propColumnTypeMapping.put(propName, field.columnType);
+                propDefaultValues.put(propName, field.defaultValue);
+                if (field.notNull) {
+                    notNullProps.add(propName);
+                }
+                if (field.notUpdate) {
+                    notUpdateProps.add(propName);
+                }
+            });
+        }
+        classDesc.setPropColumnMapping(propColumnMapping);
+        classDesc.setPropColumnTypeMapping(propColumnTypeMapping);
+        classDesc.setPropDefaultValues(propDefaultValues);
+        classDesc.setIgnoreProps(ignoreProps);
+        classDesc.setNotNullProps(notNullProps);
+        classDesc.setNotUpdateProps(notUpdateProps);
+        return classDesc;
     }
 }
