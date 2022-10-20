@@ -63,6 +63,8 @@ public interface Operator<DATA> {
      */
     List<DATA> selectByCondition(Pair<String, Object>... conditions);
 
+    List<DATA> selectByCondition(List<Pair<String, Object>> conditions);
+
     /**
      * 获取数据库操作类
      * @return 数据库操作类

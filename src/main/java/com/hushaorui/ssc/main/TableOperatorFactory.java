@@ -937,7 +937,15 @@ public class TableOperatorFactory {
 
             @Override
             public List<Object> selectByCondition(Pair<String, Object>... conditions) {
-                String key = sscTableInfo.getNoCachedConditionKey(conditions);
+                if (conditions == null || conditions.length == 0) {
+                    return selectByCondition(Collections.emptyList());
+                }
+                return selectByCondition(Arrays.asList(conditions));
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+                String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
                 String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, conditions));
                 Object[] params = getConditionParams(classDesc, conditions);
                 return jdbcTemplate.query(sql, (RowMapper<Object>) getRowMapper(), params);
@@ -950,8 +958,8 @@ public class TableOperatorFactory {
         });
     }
 
-    private Object[] getConditionParams(DataClassDesc classDesc, Pair<String, Object>... conditions) {
-        if (conditions == null || conditions.length == 0) {
+    private Object[] getConditionParams(DataClassDesc classDesc, List<Pair<String, Object>> conditions) {
+        if (conditions == null || conditions.isEmpty()) {
             return new Object[0];
         }
         int tableCount = classDesc.getTableCount();
@@ -1276,14 +1284,14 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     return doSelectByCondition(getNoCachedOperator(clazz), conditions);
                 }
 
-                String key = sscTableInfo.getNoCachedConditionKey(conditions);
+                String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
                 if (! sscTableInfo.getSelectByConditionSql().containsKey(key)) {
                     // 不使用缓存
                     return doSelectByCondition(getNoCachedOperator(clazz), conditions);
@@ -1338,6 +1346,14 @@ public class TableOperatorFactory {
                     }
                     return dataList;
                 }
+            }
+
+            @Override
+            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
+                if (conditions == null || conditions.length == 0) {
+                    return selectByCondition(Collections.emptyList());
+                }
+                return selectByCondition(Arrays.asList(conditions));
             }
 
             /*@Override
@@ -1397,14 +1413,14 @@ public class TableOperatorFactory {
         uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
-    private Object getUniqueValueByMap(Pair<String, Object>... conditions) {
-        if (conditions == null || conditions.length == 0) {
+    private Object getUniqueValueByMap(List<Pair<String, Object>> conditions) {
+        if (conditions == null || conditions.isEmpty()) {
             return "";
         }
         JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
-        int size = conditions.length;
+        int size = conditions.size();
         if (size == 1) {
-            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(conditions[0].getValue()));
+            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(conditions.get(0).getValue()));
         } else {
             // 联合字段
             StringBuilder builder1 = new StringBuilder();
@@ -1501,11 +1517,11 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    private List<Object> doSelectByCondition(Operator<?> operator, Pair<String, Object>... conditions) {
+    private List<Object> doSelectByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
-            Method insertMethod = operatorClass.getMethod("selectByCondition", HashMap.class);
+            Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
             return (List<Object>) insertMethod.invoke(operator, conditions);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), conditions), e);

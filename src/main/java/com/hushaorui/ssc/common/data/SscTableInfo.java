@@ -117,7 +117,7 @@ public class SscTableInfo {
      * @param conditions 属性名或字段名集合(可混合)
      * @return 查询sql
      */
-    public String getNoCachedConditionSql(String key, Pair<String, Object>... conditions) {
+    public String getNoCachedConditionSql(String key, List<Pair<String, Object>> conditions) {
         if (noCachedSelectByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectByConditionSql == null) {
@@ -128,18 +128,19 @@ public class SscTableInfo {
         return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, noCachedSelectByConditionSql, conditions));
     }
 
-    public String getNoCachedConditionKey(Pair<String, Object>... conditions) {
-        if (conditions == null || conditions.length == 0) {
+    public String getNoCachedConditionKeyByList(List<Pair<String, Object>> conditions) {
+        if (conditions == null || conditions.isEmpty()) {
             return "";
         }
         StringBuilder key = new StringBuilder();
-        for (int i = 0; i < conditions.length; i++) {
+        for (int i = 0; i < conditions.size(); i++) {
             // 统一使用 columnName
-            String columnName = classDesc.getColumnByProp(conditions[i].getKey());
-            key.append(ValueConditionEnum.getKeyString(conditions[i].getValue()));
+            Pair<String, Object> pair = conditions.get(i);
+            String columnName = classDesc.getColumnByProp(pair.getKey());
+            key.append(ValueConditionEnum.getKeyString(pair.getValue()));
             // 字段名不可能存在空格，这里使用空格分隔
             key.append(columnName);
-            if (i != conditions.length - 1) {
+            if (i != conditions.size() - 1) {
                 key.append(" ");
             }
         }
@@ -171,7 +172,7 @@ public class SscTableInfo {
         return map;
     }
 
-    protected String putConditionSqlToMap(String key, Map<String, String> map, Pair<String, Object>... conditions) {
+    protected String putConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
         for (int i = 0; i < tableCount; i ++) {
@@ -179,13 +180,14 @@ public class SscTableInfo {
                 builder.append("\nunion all \n");
             }
             builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
-            if (conditions != null && conditions.length > 0) {
+            if (conditions != null && conditions.size() > 0) {
                 builder.append(" where ");
             }
             if (conditions != null) {
-                for (int c = 0; c < conditions.length; c ++) {
-                    String columnName = classDesc.getColumnByProp(conditions[c].getKey());
-                    Object value = conditions[c].getValue();
+                for (int c = 0; c < conditions.size(); c ++) {
+                    Pair<String, Object> pair = conditions.get(c);
+                    String columnName = classDesc.getColumnByProp(pair.getKey());
+                    Object value = pair.getValue();
                     builder.append(columnName);
                     if (value instanceof ValueIn) {
                         builder.append(" in (");
@@ -202,7 +204,7 @@ public class SscTableInfo {
                     } else {
                         builder.append(ValueConditionEnum.getSqlString(value));
                     }
-                    if (c != conditions.length - 1) {
+                    if (c != conditions.size() - 1) {
                         builder.append(" and ");
                     }
                 }
@@ -210,7 +212,7 @@ public class SscTableInfo {
         }
         String value = builder.toString();
         if (key == null) {
-            map.put(getNoCachedConditionKey(conditions), value);
+            map.put(getNoCachedConditionKeyByList(conditions), value);
         } else {
             map.put(key, value);
         }
