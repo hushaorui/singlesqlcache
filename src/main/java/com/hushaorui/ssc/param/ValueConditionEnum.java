@@ -15,6 +15,9 @@ public enum ValueConditionEnum {
     ValueLessThan(ValueLessThan.class, " <", " < ?"),
     ValueLike(ValueLike.class, " like", " like ?"),
     Equal(Object.class, "", " = ?"),
+    FirstResult(ValueFirstResult.class, "^", ""),
+    MaxResult(ValueMaxResult.class, "$", ""),
+    OrderBy(ValueOrderBy.class, "order", ""),
     ;
 
     ValueConditionEnum(Class<?> clazz, String keyString, String sqlString) {
@@ -39,6 +42,10 @@ public enum ValueConditionEnum {
     public static String getKeyString(Object object) {
         if (object == null) {
             return Equal.keyString;
+        }
+        if ((object instanceof SpecialValue) && ((SpecialValue) object).getValue() == null) {
+            // 如果是封装后的对象，里面的值是null，则该条件失效
+            return "";
         }
         return mapping.getOrDefault(object.getClass(), Equal).keyString;
     }

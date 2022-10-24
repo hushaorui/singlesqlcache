@@ -2,6 +2,11 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
+import com.hushaorui.ssc.param.ValueConditionEnum;
+import com.hushaorui.ssc.param.ValueFirstResult;
+import com.hushaorui.ssc.param.ValueIn;
+import com.hushaorui.ssc.param.ValueMaxResult;
+import javafx.util.Pair;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -143,8 +148,8 @@ public class SscTableInfoMysql extends SscTableInfo {
                     if (iterator.hasNext()) {
                         create.append(", ");
                         namesBuilder.append(", ");
-                        selectByUniqueKey.append(" and ");
-                        uniqueSelectSql[i].append(" and ");
+                        selectByUniqueKey.append(AND_STRING);
+                        uniqueSelectSql[i].append(AND_STRING);
                     }
                     if (tableCount > 1) {
                         uniqueCreateSql[i].append(",\n    ");
@@ -258,5 +263,10 @@ public class SscTableInfoMysql extends SscTableInfo {
         }
         //uniqueSelectSqlMap.values().forEach(System.out::println);
         this.uniqueSelectSqlMap = uniqueSelectSqlMap;
+    }
+
+    @Override
+    protected void appendLimitString(StringBuilder builder) {
+        builder.append(" limit ?,?");
     }
 }

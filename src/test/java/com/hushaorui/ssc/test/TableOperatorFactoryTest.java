@@ -1,15 +1,13 @@
 package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.main.Operator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
-import com.hushaorui.ssc.param.ValueBetween;
-import com.hushaorui.ssc.param.ValueGreatThan;
-import com.hushaorui.ssc.param.ValueIsNotNull;
-import com.hushaorui.ssc.param.ValueIsNull;
+import com.hushaorui.ssc.param.*;
 import com.hushaorui.ssc.test.common.TestPlayer;
 import javafx.util.Pair;
 import org.junit.Before;
@@ -20,6 +18,7 @@ import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -199,6 +198,27 @@ public class TableOperatorFactoryTest {
     }
 
     @Test
+    public void test_selectByCondition_2() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            ArrayList<Long> ids = new ArrayList<>();
+            ids.add(4L);
+            ids.add(5L);
+            ids.add(6L);
+            ids.add(10L);
+            Pair<String, Object> condition1 = new Pair<>("userId", new ValueIn<>(ids));
+            Pair<String, Object> condition2 = new Pair<>("firstResult", new ValueFirstResult(0));
+            Pair<String, Object> condition3 = new Pair<>("maxResult", new ValueMaxResult(3));
+            List<TestPlayer> testPlayers = operator.selectByCondition(condition1, condition2, condition3);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+            testPlayers = operator.selectByCondition(condition1, condition2, condition3);
+            System.out.println(jsonSerializer.toJsonString(testPlayers));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
     public void test_selectByCondition_ValueIsNotNull() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
@@ -312,5 +332,16 @@ public class TableOperatorFactoryTest {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    @Test
+    public void test_limit() {
+        Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+        List<Pair<String, Object>> conditions = new ArrayList<>();
+        conditions.add(new Pair<>("", new ValueOrderBy("user_id")));
+        conditions.add(new Pair<>("", new ValueFirstResult(0)));
+        conditions.add(new Pair<>("", new ValueMaxResult(4)));
+        List<TestPlayer> testPlayers = operator.selectByCondition(conditions);
+        testPlayers.forEach(System.out::println);
     }
 }

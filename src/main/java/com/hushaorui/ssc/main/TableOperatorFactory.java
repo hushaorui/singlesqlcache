@@ -3,13 +3,13 @@ package com.hushaorui.ssc.main;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
-import com.hushaorui.ssc.common.data.SscCondition;
+import com.hushaorui.ssc.common.data.SscSqlResult;
 import com.hushaorui.ssc.common.data.SscTableInfo;
 import com.hushaorui.ssc.common.em.CacheStatus;
 import com.hushaorui.ssc.config.*;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLog;
-import com.hushaorui.ssc.param.*;
+import com.hushaorui.ssc.param.ValueConditionEnum;
 import com.hushaorui.ssc.util.SscStringUtils;
 import javafx.util.Pair;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -344,7 +344,7 @@ public class TableOperatorFactory {
         // 条件查询字段集合
         Map<String, List<SscValue>> conditionProps;
         if (dataClassDesc.getConditionProps() == null) {
-            conditionProps = new HashMap<>();
+            conditionProps = new LinkedHashMap<>();
         } else {
             conditionProps = dataClassDesc.getConditionProps();
         }
@@ -498,7 +498,7 @@ public class TableOperatorFactory {
         // 所有唯一键的字段集合
         Map<String, Set<String>> uniqueProps = new HashMap<>();
         // 条件查询字段集合
-        Map<String, List<SscValue>> conditionProps = new HashMap<>();
+        Map<String, List<SscValue>> conditionProps = new LinkedHashMap<>();
         // 所有不会更新的字段集合
         Set<String> notUpdateProps = new HashSet<>();
         // 所有被忽略的字段集合
@@ -946,9 +946,13 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
                 String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
-                String sql = sscTableInfo.getSelectByConditionSql().getOrDefault(key, sscTableInfo.getNoCachedConditionSql(key, conditions));
-                Object[] params = getConditionParams(classDesc, conditions);
-                return jdbcTemplate.query(sql, (RowMapper<Object>) getRowMapper(), params);
+                SscSqlResult sscSqlResult = sscTableInfo.getSelectByConditionSql(key, conditions);
+                if (sscSqlResult == null) {
+                    sscSqlResult = sscTableInfo.getNoCachedConditionSql(key, conditions);
+                }
+                Object[] params = sscSqlResult.getParams().toArray();
+                //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                return jdbcTemplate.query(sscSqlResult.getSql(), (RowMapper<Object>) getRowMapper(), params);
             }
 
             @Override
@@ -958,7 +962,7 @@ public class TableOperatorFactory {
         });
     }
 
-    private Object[] getConditionParams(DataClassDesc classDesc, List<Pair<String, Object>> conditions) {
+    /*private Object[] getConditionParams(DataClassDesc classDesc, List<Pair<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return new Object[0];
         }
@@ -992,7 +996,7 @@ public class TableOperatorFactory {
             index++;
         }
         return params.toArray();
-    }
+    }*/
 
     private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data) {
         int size = propNames.size();
@@ -1439,7 +1443,7 @@ public class TableOperatorFactory {
         }
     }
 
-    private String getNoCachedConditionKey(DataClassDesc classDesc, SscCondition... conditions) {
+    /*private String getNoCachedConditionKey(DataClassDesc classDesc, SscCondition... conditions) {
         if (conditions == null || conditions.length == 0) {
             return "";
         }
@@ -1486,7 +1490,7 @@ public class TableOperatorFactory {
             }
         }
         return key.toString().intern();
-    }
+    }*/
 
     private Object getUniqueValueByUniqueName(DataClassDesc classDesc, Set<String> propNames, Object data) {
         int size = propNames.size();
@@ -1520,11 +1524,10 @@ public class TableOperatorFactory {
     private List<Object> doSelectByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
-            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
             Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
             return (List<Object>) insertMethod.invoke(operator, conditions);
         } catch (Exception e) {
-            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), conditions), e);
+            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
         }
     }
 

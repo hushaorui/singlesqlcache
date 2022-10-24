@@ -143,8 +143,8 @@ public class SscTableInfoDerby extends SscTableInfo {
                     if (iterator.hasNext()) {
                         create.append(", ");
                         namesBuilder.append(", ");
-                        selectByUniqueKey.append(" and ");
-                        uniqueSelectSql[i].append(" and ");
+                        selectByUniqueKey.append(AND_STRING);
+                        uniqueSelectSql[i].append(AND_STRING);
                     }
                     if (tableCount > 1) {
                         uniqueCreateSql[i].append(",\n    ");
@@ -258,5 +258,10 @@ public class SscTableInfoDerby extends SscTableInfo {
         }
         //uniqueSelectSqlMap.values().forEach(System.out::println);
         this.uniqueSelectSqlMap = uniqueSelectSqlMap;
+    }
+
+    @Override
+    protected void appendLimitString(StringBuilder builder) {
+        builder.append(" OFFSET ? ROWS FETCH NEXT ? ROWS ONLY ");
     }
 }

@@ -2,20 +2,17 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.config.SscValue;
-import com.hushaorui.ssc.param.ValueConditionEnum;
-import com.hushaorui.ssc.param.ValueIn;
+import com.hushaorui.ssc.param.*;
 import javafx.util.Pair;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 表的信息
  */
-public class SscTableInfo {
+public abstract class SscTableInfo {
+    protected static final String AND_STRING = " and ";
     /** 建表语句 */
     protected String[] createTableSql;
     /** 删表语句 */
@@ -112,12 +109,20 @@ public class SscTableInfo {
         this.classDesc = classDesc;
     }
 
+    public SscSqlResult getSelectByConditionSql(String key, List<Pair<String, Object>> conditions) {
+        String sql  = selectByConditionSql.get(key);
+        if (sql == null) {
+            return null;
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
     /**
      * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
      * @param conditions 属性名或字段名集合(可混合)
      * @return 查询sql
      */
-    public String getNoCachedConditionSql(String key, List<Pair<String, Object>> conditions) {
+    public SscSqlResult getNoCachedConditionSql(String key, List<Pair<String, Object>> conditions) {
         if (noCachedSelectByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectByConditionSql == null) {
@@ -125,7 +130,84 @@ public class SscTableInfo {
                 }
             }
         }
-        return noCachedSelectByConditionSql.getOrDefault(key, putConditionSqlToMap(key, noCachedSelectByConditionSql, conditions));
+        String sql = noCachedSelectByConditionSql.get(key);
+        if (sql == null) {
+            // 创建新的sql和查询条件数组，并返回
+            return putNoCachedConditionSqlToMap(key, noCachedSelectByConditionSql, conditions);
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
+    protected SscSqlResult getParamsAndSql(String sql, List<Pair<String, Object>> conditions) {
+        if (conditions == null || conditions.isEmpty()) {
+            return new SscSqlResult(sql, Collections.emptyList());
+        }
+        Integer firstResult = null;
+        Integer maxResult = null;
+        String orderBy = null;
+        // 根据 sscResult 和 conditions，获得params
+        List<Object> params = new ArrayList<>();
+        for (int i = 0; i < tableNames.length; i ++) {
+            for (Pair<String, Object> pair : conditions) {
+                Object value = pair.getValue();
+                if (value instanceof ValueIn) {
+                    ValueIn<Object> valueIn = (ValueIn<Object>) value;
+                    Collection<Object> values = valueIn.getValues();
+                    if (i == 0) {
+                        String columnName = classDesc.getColumnByProp(pair.getKey());
+                        String oldString = columnName + " in (?)";
+                        if (values == null || values.isEmpty()) {
+                            // 该条件不存在
+                            sql = sql.replace(oldString, "");
+                        } else if (values.size() > 1) {
+                            StringBuilder newString = new StringBuilder(columnName);
+                            newString.append(" in (");
+                            int loopCount = values.size() - 1;
+                            for (int count = 0; count < loopCount; count ++) {
+                                newString.append("? ,");
+                            }
+                            newString.append("?)");
+                            // 超过一个
+                            sql = sql.replace(oldString, newString.toString());
+                        }
+                    }
+                    if (values != null) {
+                        params.addAll(values);
+                    }
+                    continue;
+                } else if (value instanceof ValueBetween) {
+                    ValueBetween<Object> valueBetween = (ValueBetween<Object>) value;
+                    params.add(valueBetween.getFirst());
+                    params.add(valueBetween.getLast());
+                    continue;
+                } else if ((value instanceof ValueIsNotNull) || (value instanceof ValueIsNull)) {
+                    continue;
+                }
+                if (value instanceof ValueFirstResult) {
+                    firstResult = ((ValueFirstResult) value).getValue();
+                } else if (value instanceof ValueMaxResult) {
+                    maxResult = ((ValueMaxResult) value).getValue();
+                } else if (value instanceof ValueOrderBy) {
+                    orderBy = ((ValueOrderBy) value).getValue();
+                } else if (value instanceof SpecialValue) {
+                    params.add(((SpecialValue) value).getValue());
+                } else {
+                    params.add(value);
+                }
+            }
+            if (tableNames.length > 1 && firstResult != null && maxResult != null) {
+                params.add(firstResult);
+                params.add(maxResult);
+            }
+        }
+        if (orderBy != null) {
+            params.add(orderBy);
+        }
+        if (tableNames.length == 1 && firstResult != null && maxResult != null) {
+            params.add(firstResult);
+            params.add(maxResult);
+        }
+        return new SscSqlResult(sql, params);
     }
 
     public String getNoCachedConditionKeyByList(List<Pair<String, Object>> conditions) {
@@ -137,7 +219,8 @@ public class SscTableInfo {
             // 统一使用 columnName
             Pair<String, Object> pair = conditions.get(i);
             String columnName = classDesc.getColumnByProp(pair.getKey());
-            key.append(ValueConditionEnum.getKeyString(pair.getValue()));
+            Object value = pair.getValue();
+            key.append(ValueConditionEnum.getKeyString(value));
             // 字段名不可能存在空格，这里使用空格分隔
             key.append(columnName);
             if (i != conditions.size() - 1) {
@@ -147,7 +230,7 @@ public class SscTableInfo {
         return key.toString().intern();
     }
 
-    protected String getNoCachedConditionKey(List<SscValue> propAndTypes) {
+    protected String getConditionKey(List<SscValue> propAndTypes) {
         StringBuilder key = new StringBuilder();
         Iterator<SscValue> iterator = propAndTypes.iterator();
         while (iterator.hasNext()) {
@@ -172,80 +255,151 @@ public class SscTableInfo {
         return map;
     }
 
-    protected String putConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions) {
+    protected abstract void appendLimitString(StringBuilder builder);
+
+    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
+        List<Object> paramList = new ArrayList<>();
+        SscResult sscResult = new SscResult();
+        sscResult.paramList = paramList;
+        List<Object> params = new ArrayList<>();
+        StringBuilder iteratorBuilder = iteratorConditions(conditions, sscResult);
         for (int i = 0; i < tableCount; i ++) {
             if (i > 0) {
                 builder.append("\nunion all \n");
             }
             builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
-            if (conditions != null && conditions.size() > 0) {
-                builder.append(" where ");
+            builder.append(iteratorBuilder);
+            params.addAll(paramList);
+            if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+                appendLimitString(builder);
+                params.add(sscResult.firstResult);
+                params.add(sscResult.maxResult);
             }
-            if (conditions != null) {
-                for (int c = 0; c < conditions.size(); c ++) {
-                    Pair<String, Object> pair = conditions.get(c);
-                    String columnName = classDesc.getColumnByProp(pair.getKey());
-                    Object value = pair.getValue();
-                    builder.append(columnName);
-                    if (value instanceof ValueIn) {
-                        builder.append(" in (");
-                        ValueIn<Object> valueIn = (ValueIn<Object>) value;
-                        Iterator<Object> it = valueIn.getValues().iterator();
-                        while (it.hasNext()) {
-                            it.next();
-                            builder.append("?");
-                            if (it.hasNext()) {
-                                builder.append(" ,");
-                            }
-                        }
-                        builder.append(")");
-                    } else {
-                        builder.append(ValueConditionEnum.getSqlString(value));
-                    }
-                    if (c != conditions.size() - 1) {
-                        builder.append(" and ");
+        }
+        if (sscResult.orderBy != null) {
+            builder.append(" order by ?");
+            params.add(sscResult.orderBy);
+        }
+        if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+            appendLimitString(builder);
+            params.add(sscResult.firstResult);
+            params.add(sscResult.maxResult);
+        }
+        String sql = builder.toString();
+        SscSqlResult sscSqlResult = new SscSqlResult(sql, params);
+        if (key == null) {
+            map.put(getNoCachedConditionKeyByList(conditions), builder.toString());
+        } else {
+            map.put(key, builder.toString());
+        }
+        return sscSqlResult;
+    }
+
+    private StringBuilder iteratorConditions(List<Pair<String, Object>> conditions, SscResult sscResult) {
+        StringBuilder builder = new StringBuilder();
+        if (conditions == null) {
+            return builder;
+        }
+        boolean notFirst = false;
+        for (Pair<String, Object> pair : conditions) {
+            Object value = pair.getValue();
+            if (value instanceof ValueIn) {
+                if (notFirst) {
+                    builder.append(AND_STRING);
+                } else {
+                    builder.append(" where ");
+                }
+                notFirst = true;
+                builder.append(classDesc.getColumnByProp(pair.getKey()));
+                builder.append(" in (");
+                ValueIn<Object> valueIn = (ValueIn) value;
+                Iterator<Object> it = valueIn.getValues().iterator();
+                while (it.hasNext()) {
+                    Object listItem = it.next();
+                    sscResult.paramList.add(listItem);
+                    builder.append("?");
+                    if (it.hasNext()) {
+                        builder.append(" ,");
                     }
                 }
+                builder.append(")");
+            } else if (value instanceof ValueFirstResult) {
+                sscResult.firstResult = ((ValueFirstResult) value).getValue();
+            } else if (value instanceof ValueMaxResult) {
+                sscResult.maxResult = ((ValueMaxResult) value).getValue();
+            } else if (value instanceof ValueOrderBy) {
+                sscResult.orderBy = ((ValueOrderBy) value).getValue();
+            } else {
+                if (notFirst) {
+                    builder.append(AND_STRING);
+                }
+                notFirst = true;
+                builder.append(classDesc.getColumnByProp(pair.getKey()));
+                builder.append(ValueConditionEnum.getSqlString(value));
+                sscResult.paramList.add(value);
             }
         }
-        String value = builder.toString();
-        if (key == null) {
-            map.put(getNoCachedConditionKeyByList(conditions), value);
-        } else {
-            map.put(key, value);
-        }
-        return value;
+        return builder;
     }
+
     protected void putConditionSqlToMap(List<SscValue> propAndTypes, Map<String, String> map) {
         StringBuilder builder = new StringBuilder();
+        SscResult sscResult = new SscResult();
         int tableCount = classDesc.getTableCount();
+        StringBuilder iteratorBuilder = iteratorPropAndTypes(propAndTypes, sscResult);
         for (int i = 0; i < tableCount; i ++) {
             if (i > 0) {
                 builder.append("\nunion all \n");
             }
             builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
-            Iterator<SscValue> iterator = propAndTypes.iterator();
-            if (iterator.hasNext()) {
-                builder.append(" where ");
-            }
-            while (iterator.hasNext()) {
-                SscValue next = iterator.next();
-                String columnName = classDesc.getColumnByProp(next.propName);
-                builder.append(columnName);
-                ValueConditionEnum type = next.condition;
-                if (ValueConditionEnum.ValueIn.equals(type)) {
-                    // 无法确定集合的大小，这里只能象征性地放一个
-                    builder.append(" in (?)");
-                } else {
-                    builder.append(type.getSqlString());
-                }
-                if (iterator.hasNext()) {
-                    builder.append(" and ");
-                }
+            builder.append(iteratorBuilder);
+            if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+                appendLimitString(builder);
             }
         }
-        map.put(getNoCachedConditionKey(propAndTypes), builder.toString());
+        if (sscResult.orderBy != null) {
+            builder.append(" order by ?");
+        }
+        if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+            appendLimitString(builder);
+        }
+        map.put(getConditionKey(propAndTypes), builder.toString());
+    }
+
+    private StringBuilder iteratorPropAndTypes(List<SscValue> propAndTypes, SscResult sscResult) {
+        StringBuilder builder = new StringBuilder();
+        Iterator<SscValue> iterator = propAndTypes.iterator();
+        boolean notFirst = false;
+        while (iterator.hasNext()) {
+            SscValue next = iterator.next();
+            ValueConditionEnum type = next.condition;
+            if (ValueConditionEnum.ValueIn.equals(type)) {
+                if (notFirst) {
+                    builder.append(AND_STRING);
+                } else {
+                    builder.append(" where ");
+                }
+                notFirst = true;
+                builder.append(classDesc.getColumnByProp(next.propName));
+                // 无法确定集合的大小，这里只能象征性地放一个
+                builder.append(" in (?)");
+            } else if (ValueConditionEnum.FirstResult.equals(type)) {
+                sscResult.firstResult = 0;
+            } else if (ValueConditionEnum.MaxResult.equals(type)) {
+                sscResult.maxResult = 0;
+            } else if (ValueConditionEnum.OrderBy.equals(type)) {
+                sscResult.orderBy = "";
+            } else {
+                if (notFirst) {
+                    builder.append(AND_STRING);
+                }
+                notFirst = true;
+                builder.append(classDesc.getColumnByProp(next.propName));
+                builder.append(type.getSqlString());
+            }
+        }
+        return builder;
     }
 }
