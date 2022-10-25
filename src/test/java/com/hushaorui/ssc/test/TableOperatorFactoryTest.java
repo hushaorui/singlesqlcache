@@ -371,4 +371,18 @@ public class TableOperatorFactoryTest {
         int count = operator.countByCondition(conditions);
         System.out.println(count);
     }
+
+    @Test
+    public void test_cast() {
+        try {
+            String className = TestPlayer.class.getName();
+            Operator<Object> operator = tableOperatorFactory.getOperator((Class<Object>) Class.forName(className));
+            TestPlayer testPlayer = new TestPlayer();
+            testPlayer.setUserId(100L);
+            Object object = testPlayer;
+            operator.delete(object);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }

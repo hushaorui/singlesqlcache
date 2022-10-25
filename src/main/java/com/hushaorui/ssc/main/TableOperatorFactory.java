@@ -462,15 +462,20 @@ public class TableOperatorFactory {
         DataClass annotation = clazz.getDeclaredAnnotation(DataClass.class);
         // 表名
         String tableName;
+        // 使用使用id生成策略
+        boolean idIsAuto;
         if (annotation == null) {
             // 默认不分表
             tableCount = 1;
             tableName = generateTableName(clazz);
             // 默认启用缓存
             cached = true;
+            // 默认id使用自动生成策略
+            idIsAuto = true;
         } else {
             tableCount = annotation.tableCount();
             cached = annotation.cached();
+            idIsAuto = annotation.isAuto();
             String value = annotation.value();
             if (value.length() == 0) {
                 tableName = generateTableName(clazz);
@@ -507,8 +512,6 @@ public class TableOperatorFactory {
 
         // id字段的名称
         String idPropName = null;
-        // 使用使用id生成策略
-        Boolean idIsAuto = null;
         Class<?> tempClass = clazz;
         while (!Object.class.equals(tempClass)) {
             Field[] declaredFields = tempClass.getDeclaredFields();
@@ -536,7 +539,6 @@ public class TableOperatorFactory {
                             throw new SscRuntimeException(String.format("ID field can only have one in class: %s", clazz.getName()));
                         }
                         idPropName = propName;
-                        idIsAuto = fieldDesc.isAuto();
                     }
                     String value = fieldDesc.value();
                     if (value.length() == 0) {
@@ -619,8 +621,6 @@ public class TableOperatorFactory {
         if (idPropName == null) {
             // 没有标注id，则第一个字段为id
             idPropName = propColumnMapping.keySet().iterator().next();
-            // 默认使用id生成策略
-            idIsAuto = true;
         }
         dataClassDesc.setTableCount(tableCount);
         dataClassDesc.setTableName(tableName);

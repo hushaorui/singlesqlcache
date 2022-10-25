@@ -12,4 +12,6 @@ public @interface DataClass {
     int tableCount() default 1;
     /** 是否启用缓存，默认启用 */
     boolean cached() default true;
+    /** id是否使用自动生成策略，默认使用 */
+    boolean isAuto() default true;
 }

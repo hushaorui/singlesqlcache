@@ -18,8 +18,6 @@ public @interface FieldDesc {
     String columnType() default "";
     /** 是否是id */
     boolean isId() default false;
-    /** id是否使用自动生成策略，默认使用 */
-    boolean isAuto() default true;
     /** 忽略该字段，字段不保存进数据库 */
     boolean ignore() default false;
     /** 字段不允许为null */
