@@ -15,6 +15,8 @@ public class DataClassDesc extends CommonClassDesc {
     private String tableName;
     /** 分表的数量 */
     private int tableCount;
+    /** 是否启用缓存 */
+    private boolean cached;
 
     /** 所有的类字段名和表字段名的映射 */
     private Map<String, String> propColumnMapping;
@@ -55,6 +57,14 @@ public class DataClassDesc extends CommonClassDesc {
 
     public void setTableCount(int tableCount) {
         this.tableCount = tableCount;
+    }
+
+    public boolean isCached() {
+        return cached;
+    }
+
+    public void setCached(boolean cached) {
+        this.cached = cached;
     }
 
     public Map<String, String> getPropColumnMapping() {
@@ -152,11 +162,14 @@ public class DataClassDesc extends CommonClassDesc {
     public static DataClassDesc transFrom(SscData data) {
         DataClassDesc classDesc = new DataClassDesc();
         classDesc.tableName = data.tableName;
-        classDesc.tableCount = data.tableCount;
+        // 默认为1，不分表
+        classDesc.tableCount = data.tableCount <= 0 ? 1 : data.tableCount;
         classDesc.idPropName = data.idPropName;
         classDesc.conditionProps = data.conditionProps;
         classDesc.uniqueProps = new HashMap<>();
         data.uniqueProps.forEach((uniqueName, list) -> classDesc.uniqueProps.put(uniqueName, new HashSet<>(list)));
+        // 默认为true，启用缓存
+        classDesc.cached = data.cached == null ? true : data.cached;
         // 默认为true，使用id自动生成策略
         classDesc.useIdGeneratePolicy = data.useIdGeneratePolicy == null ? true : data.useIdGeneratePolicy;
 

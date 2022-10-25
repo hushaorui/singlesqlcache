@@ -10,4 +10,6 @@ public @interface DataClass {
     String value() default "";
     /** 表的数量，大于1时将进行分表，需要指定分表字段 */
     int tableCount() default 1;
+    /** 是否启用缓存，默认启用 */
+    boolean cached() default true;
 }

@@ -281,15 +281,9 @@ public class TableOperatorFactory {
     private DataClassDesc getDataClassDesc(Class<?> clazz, SscData sscData) {
         DataClassDesc dataClassDesc = DataClassDesc.transFrom(sscData);
         dataClassDesc.setDataClass(clazz);
-        {
-            // 表的数量
-            if (dataClassDesc.getTableCount() <= 0) {
-                // 默认不分表
-                dataClassDesc.setTableCount(1);
-            }
-            if (dataClassDesc.getTableName() == null || dataClassDesc.getTableName().isEmpty()) {
-                dataClassDesc.setTableName(generateTableName(clazz));
-            }
+        if (dataClassDesc.getTableName() == null || dataClassDesc.getTableName().isEmpty()) {
+            // 生成表名
+            dataClassDesc.setTableName(generateTableName(clazz));
         }
         if (tableNameMapping.containsKey(dataClassDesc.getTableName())) {
             // 表名重复
@@ -461,6 +455,8 @@ public class TableOperatorFactory {
         dataClassDesc.setDataClass(clazz);
         // 表的数量
         int tableCount;
+        // 是否启用缓存
+        boolean cached;
         DataClass annotation = clazz.getDeclaredAnnotation(DataClass.class);
         // 表名
         String tableName;
@@ -468,8 +464,11 @@ public class TableOperatorFactory {
             // 默认不分表
             tableCount = 1;
             tableName = generateTableName(clazz);
+            // 默认启用缓存
+            cached = true;
         } else {
             tableCount = annotation.tableCount();
+            cached = annotation.cached();
             String value = annotation.value();
             if (value.length() == 0) {
                 tableName = generateTableName(clazz);
@@ -623,6 +622,7 @@ public class TableOperatorFactory {
         }
         dataClassDesc.setTableCount(tableCount);
         dataClassDesc.setTableName(tableName);
+        dataClassDesc.setCached(cached);
         dataClassDesc.setColumnPropMapping(columnPropMapping.isEmpty() ? Collections.emptyMap() : columnPropMapping);
         dataClassDesc.setPropColumnMapping(propColumnMapping.isEmpty() ? Collections.emptyMap() : propColumnMapping);
         dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping.isEmpty() ? Collections.emptyMap() : propColumnTypeMapping);
@@ -802,6 +802,10 @@ public class TableOperatorFactory {
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
+        return getNoCachedOperator(dataClass, sscTableInfo);
+    }
+
+    private <T> Operator<T> getNoCachedOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (Operator<T>) noCachedOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
             private RowMapper<T> rowMapper;
@@ -1035,14 +1039,14 @@ public class TableOperatorFactory {
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
-        return (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+        return sscTableInfo.getClassDesc().isCached() ? (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
             private final DataClassDesc classDesc = sscTableInfo.getClassDesc();
 
             @Override
             public void insert(Object object) {
                 if (!saveSwitch) {
                     // 存储缓存已关闭，直接插入数据库
-                    getNoCachedOperator(dataClass).insert((T) object);
+                    getNoCachedOperator(dataClass, sscTableInfo).insert((T) object);
                     return;
                 }
                 insertOrUpdate(getIdValueFromObject(classDesc, object), object);
@@ -1159,7 +1163,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz);
+                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
                         synchronized (SscStringUtils.getLock(id, clazz)) {
@@ -1179,7 +1183,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz);
+                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
                         synchronized (SscStringUtils.getLock(id, clazz)) {
@@ -1246,7 +1250,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", clazz.getName(), uniqueName, data));
-                    return doSelectByUniqueName(getNoCachedOperator(clazz), uniqueName, data);
+                    return doSelectByUniqueName(getNoCachedOperator(clazz, sscTableInfo), uniqueName, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
@@ -1259,7 +1263,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", clazz.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz);
+                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
                     Object value = doSelectByUniqueName(noCachedOperator, uniqueName, data);
                     // 如果没有id，无法放入缓存
                     if (value == null) {
@@ -1292,13 +1296,13 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    return doSelectByCondition(getNoCachedOperator(clazz), conditions);
+                    return doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                 }
 
                 String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
                 if (! sscTableInfo.getSelectByConditionSql().containsKey(key)) {
                     // 不使用缓存
-                    return doSelectByCondition(getNoCachedOperator(clazz), conditions);
+                    return doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                 }
                 Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
                         .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
@@ -1307,7 +1311,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     // 缓存击穿，查询数据库
-                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz), conditions);
+                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                     // 放入缓存
                     ObjectListCache objectListCache = new ObjectListCache();
                     if (dataList != null) {
@@ -1369,7 +1373,7 @@ public class TableOperatorFactory {
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
-        });
+        }) : getNoCachedOperator(dataClass, sscTableInfo);
     }
 
     /**

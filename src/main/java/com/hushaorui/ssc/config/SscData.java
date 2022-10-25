@@ -13,6 +13,8 @@ public class SscData {
     public String tableName;
     /** 分表的数量 */
     public int tableCount;
+    /** 是否启用缓存 */
+    public Boolean cached;
     /** 所有需要添加缓存的条件查询字段集合 */
     public Map<String, List<SscValue>> conditionProps;
     /** 所有唯一键的字段集合 */
@@ -28,6 +30,7 @@ public class SscData {
         SscData sscData = new SscData();
         sscData.tableName = classDesc.getTableName();
         sscData.tableCount = classDesc.getTableCount();
+        sscData.cached = classDesc.isCached();
         sscData.idPropName = classDesc.getIdPropName();
         sscData.conditionProps = classDesc.getConditionProps();
         sscData.uniqueProps = new HashMap<>();
