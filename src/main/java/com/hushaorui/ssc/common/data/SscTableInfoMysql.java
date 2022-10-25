@@ -2,11 +2,6 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.config.SingleSqlCacheConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
-import com.hushaorui.ssc.param.ValueConditionEnum;
-import com.hushaorui.ssc.param.ValueFirstResult;
-import com.hushaorui.ssc.param.ValueIn;
-import com.hushaorui.ssc.param.ValueMaxResult;
-import javafx.util.Pair;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -241,7 +236,9 @@ public class SscTableInfoMysql extends SscTableInfo {
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;
 
-        this.selectByConditionSql = getConditionSql();
+        this.selectByConditionSql = getSelectConditionSql();
+        this.countByConditionSql = getCountConditionSql();
+        this.selectIdByConditionSql = getSelectIdConditionSql();
         this.updateAllNotCachedByIdSql = updateAllNotCachedByIdSql;
         this.deleteByIdSql = deleteByIdSql;
         this.selectMaxIdSql = selectMaxIdSql;

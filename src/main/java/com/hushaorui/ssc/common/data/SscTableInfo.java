@@ -29,6 +29,12 @@ public abstract class SscTableInfo {
     protected Map<String, String> selectByConditionSql;
     /** 根据指定字段查询数据 */
     protected Map<String, String> noCachedSelectByConditionSql;
+    /** 根据指定字段查询数据的数量 */
+    protected Map<String, String> countByConditionSql;
+    /** 根据指定字段查询数据的数量 */
+    protected Map<String, String> noCachedCountByConditionSql;
+    protected Map<String, String> selectIdByConditionSql;
+    protected Map<String, String> noCachedSelectIdByConditionSql;
 
     /** 所有不需要缓存的数据更新 */
     protected String[] updateAllNotCachedByIdSql;
@@ -71,6 +77,14 @@ public abstract class SscTableInfo {
 
     public Map<String, String> getSelectByConditionSql() {
         return selectByConditionSql;
+    }
+
+    public Map<String, String> getCountByConditionSql() {
+        return countByConditionSql;
+    }
+
+    public Map<String, String> getSelectIdByConditionSql() {
+        return selectIdByConditionSql;
     }
 
     public Map<String, String> getNoCachedSelectByConditionSql() {
@@ -117,12 +131,28 @@ public abstract class SscTableInfo {
         return getParamsAndSql(sql, conditions);
     }
 
+    public SscSqlResult getCountByConditionSql(String key, List<Pair<String, Object>> conditions) {
+        String sql = countByConditionSql.get(key);
+        if (sql == null) {
+            return null;
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
+    public SscSqlResult getSelectIdByConditionSql(String key, List<Pair<String, Object>> conditions) {
+        String sql = selectIdByConditionSql.get(key);
+        if (sql == null) {
+            return null;
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
     /**
      * 根据参与条件查询的属性名或字段名集合，找到对应的查询sql
      * @param conditions 属性名或字段名集合(可混合)
      * @return 查询sql
      */
-    public SscSqlResult getNoCachedConditionSql(String key, List<Pair<String, Object>> conditions) {
+    public SscSqlResult getNoCachedSelectConditionSql(String key, List<Pair<String, Object>> conditions) {
         if (noCachedSelectByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectByConditionSql == null) {
@@ -133,7 +163,40 @@ public abstract class SscTableInfo {
         String sql = noCachedSelectByConditionSql.get(key);
         if (sql == null) {
             // 创建新的sql和查询条件数组，并返回
-            return putNoCachedConditionSqlToMap(key, noCachedSelectByConditionSql, conditions);
+            return putNoCachedConditionSqlToMap(key, noCachedSelectByConditionSql, conditions, 1);
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
+
+    public SscSqlResult getNoCachedCountConditionSql(String key, List<Pair<String, Object>> conditions) {
+        if (noCachedCountByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedCountByConditionSql == null) {
+                    noCachedCountByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        String sql = noCachedCountByConditionSql.get(key);
+        if (sql == null) {
+            // 创建新的sql和查询条件数组，并返回
+            return putNoCachedConditionSqlToMap(key, noCachedCountByConditionSql, conditions, 2);
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
+    public SscSqlResult getNoCachedSelectIdConditionSql(String key, List<Pair<String, Object>> conditions) {
+        if (noCachedSelectIdByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedSelectIdByConditionSql == null) {
+                    noCachedSelectIdByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        String sql = noCachedSelectIdByConditionSql.get(key);
+        if (sql == null) {
+            // 创建新的sql和查询条件数组，并返回
+            return putNoCachedConditionSqlToMap(key, noCachedSelectIdByConditionSql, conditions, 3);
         }
         return getParamsAndSql(sql, conditions);
     }
@@ -144,7 +207,6 @@ public abstract class SscTableInfo {
         }
         Integer firstResult = null;
         Integer maxResult = null;
-        String orderBy = null;
         // 根据 sscResult 和 conditions，获得params
         List<Object> params = new ArrayList<>();
         for (int i = 0; i < tableNames.length; i ++) {
@@ -187,8 +249,6 @@ public abstract class SscTableInfo {
                     firstResult = ((ValueFirstResult) value).getValue();
                 } else if (value instanceof ValueMaxResult) {
                     maxResult = ((ValueMaxResult) value).getValue();
-                } else if (value instanceof ValueOrderBy) {
-                    orderBy = ((ValueOrderBy) value).getValue();
                 } else if (value instanceof SpecialValue) {
                     params.add(((SpecialValue) value).getValue());
                 } else {
@@ -200,9 +260,6 @@ public abstract class SscTableInfo {
                 params.add(maxResult);
             }
         }
-        if (orderBy != null) {
-            params.add(orderBy);
-        }
         if (tableNames.length == 1 && firstResult != null && maxResult != null) {
             params.add(firstResult);
             params.add(maxResult);
@@ -210,7 +267,7 @@ public abstract class SscTableInfo {
         return new SscSqlResult(sql, params);
     }
 
-    public String getNoCachedConditionKeyByList(List<Pair<String, Object>> conditions) {
+    public String getKeyByConditionList(List<Pair<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
@@ -247,17 +304,32 @@ public abstract class SscTableInfo {
         return key.toString().intern();
     }
 
-    protected Map<String, String> getConditionSql() {
+    protected Map<String, String> getSelectConditionSql() {
         Map<String, String> map = new HashMap<>();
         // select xx.* from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
         Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map));
+        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 1));
+        return map;
+    }
+    protected Map<String, String> getCountConditionSql() {
+        Map<String, String> map = new HashMap<>();
+        // select count(id) from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
+        Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
+        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 2));
+        return map;
+    }
+
+    protected Map<String, String> getSelectIdConditionSql() {
+        Map<String, String> map = new HashMap<>();
+        // select xx.id from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
+        Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
+        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 3));
         return map;
     }
 
     protected abstract void appendLimitString(StringBuilder builder);
 
-    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions) {
+    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions, int sqlType) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
         List<Object> paramList = new ArrayList<>();
@@ -269,7 +341,21 @@ public abstract class SscTableInfo {
             if (i > 0) {
                 builder.append("\nunion all \n");
             }
-            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
+            builder.append("select ");
+            switch (sqlType) {
+                case 2:
+                    // count(id)
+                    builder.append("count(").append(classDesc.getColumnByProp(classDesc.getIdPropName())).append(")");
+                    break;
+                case 3:
+                    // xxx.id
+                    builder.append(tableNames[i]).append(".").append(classDesc.getColumnByProp(classDesc.getIdPropName()));
+                    break;
+                default:
+                    // xxx.*
+                    builder.append(tableNames[i]).append(".*");
+            }
+            builder.append(" from ").append(tableNames[i]);
             builder.append(iteratorBuilder);
             params.addAll(paramList);
             if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
@@ -277,10 +363,6 @@ public abstract class SscTableInfo {
                 params.add(sscResult.firstResult);
                 params.add(sscResult.maxResult);
             }
-        }
-        if (sscResult.orderBy != null) {
-            builder.append(" order by ?");
-            params.add(sscResult.orderBy);
         }
         if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
             appendLimitString(builder);
@@ -290,7 +372,7 @@ public abstract class SscTableInfo {
         String sql = builder.toString();
         SscSqlResult sscSqlResult = new SscSqlResult(sql, params);
         if (key == null) {
-            map.put(getNoCachedConditionKeyByList(conditions), builder.toString());
+            map.put(getKeyByConditionList(conditions), builder.toString());
         } else {
             map.put(key, builder.toString());
         }
@@ -329,8 +411,6 @@ public abstract class SscTableInfo {
                 sscResult.firstResult = ((ValueFirstResult) value).getValue();
             } else if (value instanceof ValueMaxResult) {
                 sscResult.maxResult = ((ValueMaxResult) value).getValue();
-            } else if (value instanceof ValueOrderBy) {
-                sscResult.orderBy = ((ValueOrderBy) value).getValue();
             } else {
                 if (notFirst) {
                     builder.append(AND_STRING);
@@ -344,7 +424,7 @@ public abstract class SscTableInfo {
         return builder;
     }
 
-    protected void putConditionSqlToMap(List<SscValue> propAndTypes, Map<String, String> map) {
+    protected void putConditionSqlToMap(List<SscValue> propAndTypes, Map<String, String> map, int sqlType) {
         StringBuilder builder = new StringBuilder();
         SscResult sscResult = new SscResult();
         int tableCount = classDesc.getTableCount();
@@ -353,14 +433,25 @@ public abstract class SscTableInfo {
             if (i > 0) {
                 builder.append("\nunion all \n");
             }
-            builder.append("select ").append(tableNames[i]).append(".* from ").append(tableNames[i]);
+            builder.append("select ");
+            switch (sqlType) {
+                case 2:
+                    // count(id)
+                    builder.append("count(").append(classDesc.getColumnByProp(classDesc.getIdPropName())).append(")");
+                    break;
+                case 3:
+                    // xxx.id
+                    builder.append(tableNames[i]).append(".").append(classDesc.getColumnByProp(classDesc.getIdPropName()));
+                    break;
+                default:
+                    // xxx.*
+                    builder.append(tableNames[i]).append(".*");
+            }
+            builder.append(" from ").append(tableNames[i]);
             builder.append(iteratorBuilder);
             if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
                 appendLimitString(builder);
             }
-        }
-        if (sscResult.orderBy != null) {
-            builder.append(" order by ?");
         }
         if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
             appendLimitString(builder);
@@ -389,8 +480,6 @@ public abstract class SscTableInfo {
                 sscResult.firstResult = 0;
             } else if (ValueConditionEnum.MaxResult.equals(type)) {
                 sscResult.maxResult = 0;
-            } else if (ValueConditionEnum.OrderBy.equals(type)) {
-                sscResult.orderBy = "";
             } else {
                 if (notFirst) {
                     builder.append(AND_STRING);

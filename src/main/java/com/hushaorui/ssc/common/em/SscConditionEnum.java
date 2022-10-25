@@ -9,7 +9,6 @@ public enum SscConditionEnum {
     ON("_"),
     FIRST("^"),
     MAX("$"),
-    ORDER_BY("@"),
     ;
     /** 一个指代符号 */
     private String sign;

@@ -15,8 +15,6 @@ public class SscCondition {
     private List<SscCondition> nextList;
     /** 相关联表对应的数据类 */
     private Class<?> joinClass;
-    /** 排序 */
-    private String orderBy;
     /** 整数数值(FIRST MAX) */
     private int number;
 
@@ -34,10 +32,6 @@ public class SscCondition {
 
     public Class<?> getJoinClass() {
         return joinClass;
-    }
-
-    public String getOrderBy() {
-        return orderBy;
     }
 
     public int getNumber() {
@@ -64,11 +58,6 @@ public class SscCondition {
     private SscCondition(SscConditionEnum type, int number) {
         this.type = type;
         this.number = number;
-    }
-
-    private SscCondition(SscConditionEnum type, String orderBy) {
-        this.type = type;
-        this.orderBy = orderBy;
     }
 
     private SscCondition(SscConditionEnum type, HashMap<String, Object> fieldMap) {
@@ -138,12 +127,6 @@ public class SscCondition {
 
     public SscCondition max(int max) {
         SscCondition next = new SscCondition(SscConditionEnum.MAX, max);
-        addToList(next);
-        return this;
-    }
-
-    public SscCondition orderBy(String orderBy) {
-        SscCondition next = new SscCondition(SscConditionEnum.ORDER_BY, orderBy);
         addToList(next);
         return this;
     }

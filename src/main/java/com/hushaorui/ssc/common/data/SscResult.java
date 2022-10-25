@@ -6,5 +6,4 @@ public class SscResult {
     List<Object> paramList;
     Integer firstResult;
     Integer maxResult;
-    String orderBy;
 }

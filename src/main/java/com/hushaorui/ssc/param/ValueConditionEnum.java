@@ -17,7 +17,6 @@ public enum ValueConditionEnum {
     Equal(Object.class, "", " = ?"),
     FirstResult(ValueFirstResult.class, "^", ""),
     MaxResult(ValueMaxResult.class, "$", ""),
-    OrderBy(ValueOrderBy.class, "order", ""),
     ;
 
     ValueConditionEnum(Class<?> clazz, String keyString, String sqlString) {

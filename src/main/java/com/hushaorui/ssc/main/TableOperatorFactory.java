@@ -1,5 +1,7 @@
 package com.hushaorui.ssc.main;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
@@ -380,7 +382,7 @@ public class TableOperatorFactory {
                 }
                 // 表字段名
                 String columnName;
-                if (! propColumnMapping.containsKey(propName)) {
+                if (!propColumnMapping.containsKey(propName)) {
                     // 配置中没有字段名，生成一个
                     columnName = generateColumnName(propName);
                 } else {
@@ -410,7 +412,7 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException(String.format("Field has no setter method, name: %s in class: %s", propName, clazz.getName()));
                 }
                 String columnType;
-                if (! propColumnTypeMapping.containsKey(propName)) {
+                if (!propColumnTypeMapping.containsKey(propName)) {
                     columnType = getColumnTypeByJavaType(fieldType);
                 } else {
                     columnType = propColumnTypeMapping.get(propName);
@@ -583,7 +585,7 @@ public class TableOperatorFactory {
                     }
                     String[] selectorNames = fieldDesc.selectorNames();
                     ValueConditionEnum[] valueConditionEnums = fieldDesc.selectorType();
-                    for (int m = 0; m < selectorNames.length; m ++) {
+                    for (int m = 0; m < selectorNames.length; m++) {
                         String selectorName = selectorNames[m].trim();
                         if (selectorName.length() == 0) {
                             continue;
@@ -940,23 +942,47 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
-                if (conditions == null || conditions.length == 0) {
-                    return selectByCondition(Collections.emptyList());
-                }
-                return selectByCondition(Arrays.asList(conditions));
-            }
-
-            @Override
             public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
-                String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
+                String key = sscTableInfo.getKeyByConditionList(conditions);
                 SscSqlResult sscSqlResult = sscTableInfo.getSelectByConditionSql(key, conditions);
                 if (sscSqlResult == null) {
-                    sscSqlResult = sscTableInfo.getNoCachedConditionSql(key, conditions);
+                    sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 }
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 return jdbcTemplate.query(sscSqlResult.getSql(), (RowMapper<Object>) getRowMapper(), params);
+            }
+
+            @Override
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                SscSqlResult sscSqlResult = sscTableInfo.getCountByConditionSql(key, conditions);
+                if (sscSqlResult == null) {
+                    sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
+                }
+                Object[] params = sscSqlResult.getParams().toArray();
+                //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                List<Integer> integers = jdbcTemplate.queryForList(sscSqlResult.getSql(), int.class, params);
+                if (integers == null) {
+                    return 0;
+                }
+                int sum = 0;
+                for (Integer num : integers) {
+                    sum += num;
+                }
+                return sum;
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                SscSqlResult sscSqlResult = sscTableInfo.getSelectIdByConditionSql(key, conditions);
+                if (sscSqlResult == null) {
+                    sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
+                }
+                Object[] params = sscSqlResult.getParams().toArray();
+                //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                return (List<T>) jdbcTemplate.queryForList(sscSqlResult.getSql(), (Class<Object>) sscTableInfo.getIdJavaType(), params);
             }
 
             @Override
@@ -1296,13 +1322,13 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    return doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    return doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                 }
 
-                String key = sscTableInfo.getNoCachedConditionKeyByList(conditions);
-                if (! sscTableInfo.getSelectByConditionSql().containsKey(key)) {
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
                     // 不使用缓存
-                    return doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    return doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                 }
                 Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
                         .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
@@ -1311,7 +1337,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     // 缓存击穿，查询数据库
-                    List<Object> dataList = doSelectByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    List<Object> dataList = doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                     // 放入缓存
                     ObjectListCache objectListCache = new ObjectListCache();
                     if (dataList != null) {
@@ -1357,11 +1383,91 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(Pair<String, Object>... conditions) {
-                if (conditions == null || conditions.length == 0) {
-                    return selectByCondition(Collections.emptyList());
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    return doCountByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
                 }
-                return selectByCondition(Arrays.asList(conditions));
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
+                    // 不使用缓存
+                    return doCountByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                }
+                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
+                Object uniqueValue = getUniqueValueByMap(conditions);
+                ObjectListCache cache = cacheMap.get(uniqueValue);
+                if (cache == null) {
+                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    // 缓存击穿，查询数据库，所有id
+                    List<Serializable> idList = doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    // 放入缓存
+                    ObjectListCache objectListCache = new ObjectListCache();
+                    if (idList == null) {
+                        objectListCache.setIdList(Collections.emptyList());
+                    } else {
+                        objectListCache.setIdList(idList);
+                    }
+                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+                    long now = System.currentTimeMillis();
+                    objectListCache.setLastUseTime(now);
+                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
+                    return idList.size();
+                } else {
+                    if (cache.getCacheStatus().isDelete()) {
+                        // 该对象需要删除或已被删除
+                        return 0;
+                    }
+                    // 更新最后一次使用时间(不设置，到时间就删除)
+                    //cache.setLastUseTime(System.currentTimeMillis());
+                    List<Serializable> idList = cache.getIdList();
+                    return idList == null ? 0 : idList.size();
+                }
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    return doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                }
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
+                    // 不使用缓存
+                    return doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                }
+                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
+                Object uniqueValue = getUniqueValueByMap(conditions);
+                ObjectListCache cache = cacheMap.get(uniqueValue);
+                if (cache == null) {
+                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    // 缓存击穿，查询数据库，所有id
+                    List<Serializable> idList = doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    // 放入缓存
+                    ObjectListCache objectListCache = new ObjectListCache();
+                    if (idList == null) {
+                        objectListCache.setIdList(Collections.emptyList());
+                    } else {
+                        objectListCache.setIdList(idList);
+                    }
+                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+                    long now = System.currentTimeMillis();
+                    objectListCache.setLastUseTime(now);
+                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
+                    return (List<T>) idList;
+                } else {
+                    if (cache.getCacheStatus().isDelete()) {
+                        // 该对象需要删除或已被删除
+                        return Collections.emptyList();
+                    }
+                    // 更新最后一次使用时间(不设置，到时间就删除)
+                    //cache.setLastUseTime(System.currentTimeMillis());
+                    List<Serializable> idList = cache.getIdList();
+                    return idList == null ? Collections.emptyList() : (List<T>) idList;
+                }
             }
 
             /*@Override
@@ -1525,13 +1631,33 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    private List<Object> doSelectByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    private int doCountByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Method insertMethod = operatorClass.getMethod("countByCondition", List.class);
+            return (int) insertMethod.invoke(operator, conditions);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("countByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
+        }
+    }
+
+    private List<Object> doSelectCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
             return (List<Object>) insertMethod.invoke(operator, conditions);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
+        }
+    }
+
+    private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Method insertMethod = operatorClass.getMethod("selectIdByCondition", List.class);
+            return (List<T>) insertMethod.invoke(operator, conditions);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("selectIdByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
         }
     }
 
@@ -1570,9 +1696,10 @@ public class TableOperatorFactory {
 
     /**
      * 从数据对象中获取指定字段名称的字段的值
+     *
      * @param classDesc 类的描述封装对象
-     * @param propName 类属性名称
-     * @param object 数据对象
+     * @param propName  类属性名称
+     * @param object    数据对象
      * @return 属性的值
      */
     private Object getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
@@ -1670,7 +1797,7 @@ public class TableOperatorFactory {
         }
         if (filePath != null) {
             File file = new File(filePath);
-            if (! file.exists()) {
+            if (!file.exists()) {
                 file.createNewFile();
             }
             String dump = new Yaml().dumpAsMap(configOfYaml);

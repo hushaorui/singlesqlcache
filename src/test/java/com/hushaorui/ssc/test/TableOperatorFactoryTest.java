@@ -338,10 +338,37 @@ public class TableOperatorFactoryTest {
     public void test_limit() {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
         List<Pair<String, Object>> conditions = new ArrayList<>();
-        conditions.add(new Pair<>("", new ValueOrderBy("user_id")));
         conditions.add(new Pair<>("", new ValueFirstResult(0)));
         conditions.add(new Pair<>("", new ValueMaxResult(4)));
         List<TestPlayer> testPlayers = operator.selectByCondition(conditions);
         testPlayers.forEach(System.out::println);
+    }
+
+    @Test
+    public void test_selectIdByCondition() {
+        Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+        List<Pair<String, Object>> conditions = new ArrayList<>();
+        List<Long> ids = new ArrayList<>();
+        ids.add(1L);
+        ids.add(8L);
+        conditions.add(new Pair<>("userId", new ValueIn<>(ids)));
+        conditions.add(new Pair<>("", new ValueFirstResult(0)));
+        conditions.add(new Pair<>("", new ValueMaxResult(4)));
+        List<Long> idList = operator.selectIdByCondition(conditions);
+        idList.forEach(System.out::println);
+    }
+
+    @Test
+    public void test_countByCondition() {
+        Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+        List<Pair<String, Object>> conditions = new ArrayList<>();
+        /*List<Long> ids = new ArrayList<>();
+        ids.add(1L);
+        ids.add(8L);
+        conditions.add(new Pair<>("userId", new ValueIn<>(ids)));
+        conditions.add(new Pair<>("", new ValueFirstResult(0)));
+        conditions.add(new Pair<>("", new ValueMaxResult(4)));*/
+        int count = operator.countByCondition(conditions);
+        System.out.println(count);
     }
 }

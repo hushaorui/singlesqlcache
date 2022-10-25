@@ -236,7 +236,9 @@ public class SscTableInfoDerby extends SscTableInfo {
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;
 
-        this.selectByConditionSql = getConditionSql();
+        this.selectByConditionSql = getSelectConditionSql();
+        this.countByConditionSql = getCountConditionSql();
+        this.selectIdByConditionSql = getSelectIdConditionSql();
         this.updateAllNotCachedByIdSql = updateAllNotCachedByIdSql;
         this.deleteByIdSql = deleteByIdSql;
         this.selectMaxIdSql = selectMaxIdSql;
