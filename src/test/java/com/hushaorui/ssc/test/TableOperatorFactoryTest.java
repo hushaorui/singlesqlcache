@@ -1,10 +1,9 @@
 package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
-import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
 import com.hushaorui.ssc.config.JSONSerializer;
-import com.hushaorui.ssc.config.SingleSqlCacheConfig;
+import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.main.Operator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.param.*;
@@ -33,7 +32,7 @@ public class TableOperatorFactoryTest {
             DruidDataSource druidDataSource = newDataSource("jdbc:mysql://192.168.1.239:3306/test_ssc?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=UTC",
                     "root", "123456", 10);
             jdbcTemplate = new JdbcTemplate(druidDataSource);
-            SingleSqlCacheConfig config = new SingleSqlCacheConfig();
+            SscGlobalConfig config = new SscGlobalConfig();
             // 关闭缓存
             //config.setMaxInactiveTime(0);
             // 设置启动策略

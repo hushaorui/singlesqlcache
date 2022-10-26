@@ -1,7 +1,5 @@
 package com.hushaorui.ssc.main;
 
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
@@ -11,7 +9,6 @@ import com.hushaorui.ssc.common.em.CacheStatus;
 import com.hushaorui.ssc.config.*;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLog;
-import com.hushaorui.ssc.param.ValueConditionEnum;
 import com.hushaorui.ssc.util.SscStringUtils;
 import javafx.util.Pair;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -34,7 +31,7 @@ public class TableOperatorFactory {
     /**
      * 核心配置
      */
-    private SingleSqlCacheConfig globalConfig;
+    private SscGlobalConfig globalConfig;
     /**
      * 数据库操作类
      */
@@ -59,10 +56,10 @@ public class TableOperatorFactory {
      * 针对唯一字段的数据缓存 key1:pojoClass, key2:uniqueFieldName, key3:uniqueFieldValue, value:cacheObject
      */
     private Map<Class<?>, Map<String, Map<Object, ObjectInstanceCache>>> uniqueFieldCacheMap = new ConcurrentHashMap<>();
-    /**
-     * 针对多字段条件查询的数据缓存 key1:pojoClass, key2:selectorName, key3:selectorValue, value:cacheObject
-     */
-    private Map<Class<?>, Map<String, Map<Object, ObjectListCache>>> conditionCacheMap = new ConcurrentHashMap<>();
+    ///*
+    // * 针对多字段条件查询的数据缓存 key1:pojoClass, key2:selectorName, key3:selectorValue, value:cacheObject
+    // */
+    //private Map<Class<?>, Map<String, Map<Object, ObjectListCache>>> conditionCacheMap = new ConcurrentHashMap<>();
 
     /**
      * 存入缓存的开关
@@ -75,18 +72,18 @@ public class TableOperatorFactory {
     /**
      * 所有的数据类描述
      */
-    private static final Map<Class<?>, SscTableInfo> tableInfoMapping = new HashMap<>();
+    private final Map<Class<?>, SscTableInfo> tableInfoMapping = new ConcurrentHashMap<>();
     /**
      * 给用户操作的缓存类
      */
-    private static final Map<Class<?>, Operator<?>> userOperatorMap = new HashMap<>();
+    private final Map<Class<?>, Operator<?>> userOperatorMap = new ConcurrentHashMap<>();
     /**
      * 无缓存的操作类
      */
-    private static final Map<Class<?>, Operator<?>> noCachedOperatorMap = new HashMap<>();
-    private static final Map<String, SscTableInfo> tableNameMapping = new HashMap<>();
+    private final Map<Class<?>, Operator<?>> noCachedOperatorMap = new ConcurrentHashMap<>();
+    private final Set<String> allTableNames = Collections.synchronizedSet(new HashSet<>());
 
-    public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
+    public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SscGlobalConfig globalConfig) {
         this.jdbcTemplate = jdbcTemplate;
         this.globalConfig = globalConfig;
         this.log = globalConfig.getLogFactory().getLog(TableOperatorFactory.class);
@@ -130,16 +127,16 @@ public class TableOperatorFactory {
         close();
     }
 
-    public TableOperatorFactory(JdbcTemplate jdbcTemplate, SingleSqlCacheConfig globalConfig) {
+    public TableOperatorFactory(JdbcTemplate jdbcTemplate, SscGlobalConfig globalConfig) {
         this("default", jdbcTemplate, globalConfig);
     }
 
     public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate) {
-        this(name, jdbcTemplate, new SingleSqlCacheConfig());
+        this(name, jdbcTemplate, new SscGlobalConfig());
     }
 
     public TableOperatorFactory(JdbcTemplate jdbcTemplate) {
-        this("default", jdbcTemplate, new SingleSqlCacheConfig());
+        this("default", jdbcTemplate, new SscGlobalConfig());
     }
 
     private TimerTask getTimerTask() {
@@ -230,7 +227,7 @@ public class TableOperatorFactory {
                         });
                         return outerMap.isEmpty();
                     });
-                    conditionCacheMap.entrySet().removeIf(entry1 -> {
+                    /*conditionCacheMap.entrySet().removeIf(entry1 -> {
                         Map<String, Map<Object, ObjectListCache>> map1 = entry1.getValue();
                         map1.entrySet().removeIf(entry2 -> {
                             Map<Object, ObjectListCache> map2 = entry2.getValue();
@@ -245,7 +242,7 @@ public class TableOperatorFactory {
                             return map2.isEmpty();
                         });
                         return map1.isEmpty();
-                    });
+                    });*/
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -287,7 +284,7 @@ public class TableOperatorFactory {
             // 生成表名
             dataClassDesc.setTableName(generateTableName(clazz));
         }
-        if (tableNameMapping.containsKey(dataClassDesc.getTableName())) {
+        if (allTableNames.contains(dataClassDesc.getTableName())) {
             // 表名重复
             throw new SscRuntimeException("Duplicate table name: " + dataClassDesc.getTableName());
         }
@@ -336,13 +333,6 @@ public class TableOperatorFactory {
             uniqueProps = new HashMap<>();
         } else {
             uniqueProps = dataClassDesc.getUniqueProps();
-        }
-        // 条件查询字段集合
-        Map<String, List<SscValue>> conditionProps;
-        if (dataClassDesc.getConditionProps() == null) {
-            conditionProps = new LinkedHashMap<>();
-        } else {
-            conditionProps = dataClassDesc.getConditionProps();
         }
         // 所有不会更新的字段集合
         Set<String> notUpdateProps;
@@ -444,7 +434,6 @@ public class TableOperatorFactory {
         dataClassDesc.setNotNullProps(notNullProps);
         dataClassDesc.setPropDefaultValues(propDefaultValues);
         dataClassDesc.setUniqueProps(uniqueProps);
-        dataClassDesc.setConditionProps(conditionProps);
         // id是不进行更新的
         notUpdateProps.add(idPropName);
         dataClassDesc.setNotUpdateProps(notUpdateProps);
@@ -457,6 +446,8 @@ public class TableOperatorFactory {
         dataClassDesc.setDataClass(clazz);
         // 表的数量
         int tableCount;
+        // 分表字段
+        String tableSplitField;
         // 是否启用缓存
         boolean cached;
         DataClass annotation = clazz.getDeclaredAnnotation(DataClass.class);
@@ -472,6 +463,8 @@ public class TableOperatorFactory {
             cached = true;
             // 默认id使用自动生成策略
             idIsAuto = true;
+            // 默认使用id作为分表字段，这里不需指定
+            tableSplitField = null;
         } else {
             tableCount = annotation.tableCount();
             cached = annotation.cached();
@@ -482,8 +475,9 @@ public class TableOperatorFactory {
             } else {
                 tableName = value;
             }
+            tableSplitField = annotation.tableSplitField().length() > 0 ? annotation.tableSplitField() : null;
         }
-        if (tableNameMapping.containsKey(tableName)) {
+        if (allTableNames.contains(tableName)) {
             // 表名重复
             throw new SscRuntimeException("Duplicate table name: " + tableName);
         }
@@ -503,8 +497,6 @@ public class TableOperatorFactory {
         Map<String, String> propDefaultValues = new HashMap<>();
         // 所有唯一键的字段集合
         Map<String, Set<String>> uniqueProps = new HashMap<>();
-        // 条件查询字段集合
-        Map<String, List<SscValue>> conditionProps = new LinkedHashMap<>();
         // 所有不会更新的字段集合
         Set<String> notUpdateProps = new HashSet<>();
         // 所有被忽略的字段集合
@@ -585,16 +577,6 @@ public class TableOperatorFactory {
                     if (uniqueName.length() > 0) {
                         uniqueProps.computeIfAbsent(uniqueName, key -> new HashSet<>()).add(propName);
                     }
-                    String[] selectorNames = fieldDesc.selectorNames();
-                    ValueConditionEnum[] valueConditionEnums = fieldDesc.selectorType();
-                    for (int m = 0; m < selectorNames.length; m++) {
-                        String selectorName = selectorNames[m].trim();
-                        if (selectorName.length() == 0) {
-                            continue;
-                        }
-                        ValueConditionEnum type = valueConditionEnums[m % valueConditionEnums.length];
-                        conditionProps.computeIfAbsent(selectorName, key -> new ArrayList<>()).add(new SscValue(propName, type));
-                    }
                     if (fieldDesc.isNotUpdate()) {
                         notUpdateProps.add(propName);
                     }
@@ -623,6 +605,14 @@ public class TableOperatorFactory {
             idPropName = propColumnMapping.keySet().iterator().next();
         }
         dataClassDesc.setTableCount(tableCount);
+        if (tableSplitField != null) {
+            // 如果注解中填的是表字段名，也不会报错，这里还原为类字段名
+            String fieldName = columnPropMapping.getOrDefault(tableSplitField, tableSplitField);
+            if (! propColumnMapping.containsKey(fieldName)) {
+                throw new SscRuntimeException("未知的数据库分表字段名：" + fieldName);
+            }
+            dataClassDesc.setTableSplitField(fieldName);
+        }
         dataClassDesc.setTableName(tableName);
         dataClassDesc.setCached(cached);
         dataClassDesc.setColumnPropMapping(columnPropMapping.isEmpty() ? Collections.emptyMap() : columnPropMapping);
@@ -635,7 +625,6 @@ public class TableOperatorFactory {
         dataClassDesc.setNotNullProps(notNullProps.isEmpty() ? Collections.emptySet() : notNullProps);
         dataClassDesc.setPropDefaultValues(propDefaultValues.isEmpty() ? Collections.emptyMap() : propDefaultValues);
         dataClassDesc.setUniqueProps(uniqueProps.isEmpty() ? Collections.emptyMap() : uniqueProps);
-        dataClassDesc.setConditionProps(conditionProps.isEmpty() ? Collections.emptyMap() : conditionProps);
         // id是不进行更新的
         notUpdateProps.add(idPropName);
         dataClassDesc.setNotUpdateProps(notUpdateProps.isEmpty() ? Collections.emptySet() : notUpdateProps);
@@ -667,12 +656,12 @@ public class TableOperatorFactory {
         tableInfoMapping.put(clazz, newTableInfo(clazz, dataClassDesc, globalConfig));
     }
 
-    private SscTableInfo newTableInfo(Class<?> clazz, DataClassDesc dataClassDesc, SingleSqlCacheConfig globalConfig) {
+    private SscTableInfo newTableInfo(Class<?> clazz, DataClassDesc dataClassDesc, SscGlobalConfig globalConfig) {
         Class<? extends SscTableInfo> tableInfoClass = globalConfig.getTableInfoClass();
         try {
-            Constructor<? extends SscTableInfo> constructor = tableInfoClass.getConstructor(DataClassDesc.class, SingleSqlCacheConfig.class);
+            Constructor<? extends SscTableInfo> constructor = tableInfoClass.getConstructor(DataClassDesc.class, SscGlobalConfig.class);
             SscTableInfo sscTableInfo = constructor.newInstance(dataClassDesc, globalConfig);
-            tableNameMapping.put(dataClassDesc.getTableName(), sscTableInfo);
+            allTableNames.add(dataClassDesc.getTableName());
             switch (globalConfig.getLaunchPolicy()) {
                 case DROP_TABLE: {
                     // 删除表
@@ -683,11 +672,11 @@ public class TableOperatorFactory {
                     // 删除表
                     dropTable(sscTableInfo.getDropTableSql());
                     // 然后创建表
-                    createTable(sscTableInfo.getCreateTableSql(), null);
+                    createTable(sscTableInfo.getCreateTableSql());
                     break;
                 }
                 case CREATE_TABLE_IF_NOT_EXIST: {
-                    createTable(sscTableInfo.getCreateTableSql(), null);
+                    createTable(sscTableInfo.getCreateTableSql());
                     break;
                 }
             }
@@ -749,22 +738,24 @@ public class TableOperatorFactory {
             try {
                 jdbcTemplate.execute(sql);
                 log.info("删除表, sql: " + sql);
-            } catch (Exception ignore) {}
+            } catch (Exception e) {
+                if (! e.getMessage().contains("does not exist")) {
+                    log.error("删除表失败", e);
+                }
+            }
         }
     }
 
-    private void createTable(String[] createTableSql, Map<String, String[]> uniqueCreateSqlMap) {
+    private void createTable(String[] createTableSql) {
         for (String sql : createTableSql) {
-            jdbcTemplate.execute(sql);
-            log.info("创建表, sql: " + sql);
-        }
-        if (uniqueCreateSqlMap != null) {
-            uniqueCreateSqlMap.values().forEach(array -> {
-                for (String sql : array) {
-                    jdbcTemplate.execute(sql);
-                    log.info("创建辅助表, sql: " + sql);
+            try {
+                jdbcTemplate.execute(sql);
+                log.info("尝试创建表, sql: " + sql);
+            } catch (Exception e) {
+                if (! e.getMessage().contains("already exist")) {
+                    log.error("尝试创建表失败", e);
                 }
-            });
+            }
         }
     }
 
@@ -816,18 +807,18 @@ public class TableOperatorFactory {
 
             @Override
             public void insert(Object object) {
-                Object id = getIdValueFromObject(classDesc, object);
-                if (id == null) {
-                    if (classDesc.isUseIdGeneratePolicy()) {
-                        IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
-                        // 根据id生成策略获取新的id
-                        id = idGeneratePolicy.getId(clazz);
-                        setObjectId(object, id, classDesc);
-                    } else {
-                        throw new SscRuntimeException("插入数据时，id为null且不使用id生成策略, class: " + clazz.getName());
-                    }
+                Object id;
+                if (classDesc.isUseIdGeneratePolicy()) {
+                    IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
+                    // 根据id生成策略获取新的id
+                    id = idGeneratePolicy.getId(clazz);
+                    setObjectId(object, id, classDesc);
+                } else {
+                    id = getIdValueFromObject(classDesc, object);
+                    assert id != null : new SscRuntimeException("插入数据失败，id为null且不使用id生成策略, class: " + clazz.getName());
                 }
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+
+                int tableIndex = getTableIndex(classDesc, object, id);
                 String insertSql = sscTableInfo.getInsertSql()[tableIndex];
                 Object[] params = getInsertParamArrayFromObject(classDesc, object);
                 log.info(String.format("执行插入语句：%s, id:%s", insertSql, id));
@@ -854,7 +845,7 @@ public class TableOperatorFactory {
             @Override
             public void update(Object object) {
                 Object id = getIdValueFromObject(classDesc, object);
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+                int tableIndex = getTableIndex(classDesc, object, id);
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
                 Object[] params = getUpdateParamArrayFromObject(classDesc, object);
                 log.info(String.format("执行更新语句：%s, id:%s", updateSql, id));
@@ -864,7 +855,7 @@ public class TableOperatorFactory {
             @Override
             public void delete(Object object) {
                 Object id = getIdValueFromObject(classDesc, object);
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+                int tableIndex = getTableIndex(classDesc, object, id);
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
                 log.info(String.format("执行删除语句：%s, id:%s", deleteSql, id));
                 jdbcTemplate.update(deleteSql, id);
@@ -872,7 +863,7 @@ public class TableOperatorFactory {
 
             @Override
             public void delete(Serializable id) {
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+                int tableIndex = getTableIndex(classDesc, null, id);
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
                 jdbcTemplate.update(deleteSql, id);
             }
@@ -917,7 +908,7 @@ public class TableOperatorFactory {
 
             @Override
             public Object selectById(Serializable id) {
-                int tableIndex = getTableIndex(id, classDesc.getTableCount());
+                int tableIndex = getTableIndex(classDesc, null, id);
                 String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -946,10 +937,7 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
-                SscSqlResult sscSqlResult = sscTableInfo.getSelectByConditionSql(key, conditions);
-                if (sscSqlResult == null) {
-                    sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
-                }
+                SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 return jdbcTemplate.query(sscSqlResult.getSql(), (RowMapper<Object>) getRowMapper(), params);
@@ -958,10 +946,7 @@ public class TableOperatorFactory {
             @Override
             public int countByCondition(List<Pair<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
-                SscSqlResult sscSqlResult = sscTableInfo.getCountByConditionSql(key, conditions);
-                if (sscSqlResult == null) {
-                    sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
-                }
+                SscSqlResult sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 List<Integer> integers = jdbcTemplate.queryForList(sscSqlResult.getSql(), int.class, params);
@@ -978,10 +963,7 @@ public class TableOperatorFactory {
             @Override
             public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
-                SscSqlResult sscSqlResult = sscTableInfo.getSelectIdByConditionSql(key, conditions);
-                if (sscSqlResult == null) {
-                    sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
-                }
+                SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 return (List<T>) jdbcTemplate.queryForList(sscSqlResult.getSql(), (Class<Object>) sscTableInfo.getIdJavaType(), params);
@@ -1321,7 +1303,8 @@ public class TableOperatorFactory {
 
             @Override
             public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
-                if (!getSwitch) {
+                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
+                /*if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     return doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
@@ -1381,12 +1364,13 @@ public class TableOperatorFactory {
                         dataList.add(data);
                     }
                     return dataList;
-                }
+                }*/
             }
 
             @Override
             public int countByCondition(List<Pair<String, Object>> conditions) {
-                if (!getSwitch) {
+                return getNoCachedOperator(dataClass, sscTableInfo).countByCondition(conditions);
+                /*if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     return doCountByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
@@ -1425,12 +1409,13 @@ public class TableOperatorFactory {
                     //cache.setLastUseTime(System.currentTimeMillis());
                     List<Serializable> idList = cache.getIdList();
                     return idList == null ? 0 : idList.size();
-                }
+                }*/
             }
 
             @Override
             public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
-                if (!getSwitch) {
+                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
+                /*if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
                     return doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
@@ -1469,7 +1454,7 @@ public class TableOperatorFactory {
                     //cache.setLastUseTime(System.currentTimeMillis());
                     List<Serializable> idList = cache.getIdList();
                     return idList == null ? Collections.emptyList() : (List<T>) idList;
-                }
+                }*/
             }
 
             /*@Override
@@ -1529,7 +1514,7 @@ public class TableOperatorFactory {
         uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
-    private Object getUniqueValueByMap(List<Pair<String, Object>> conditions) {
+    /*private Object getUniqueValueByMap(List<Pair<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
@@ -1553,7 +1538,7 @@ public class TableOperatorFactory {
             }
             return getStringFromBuilder(builder1, builder2);
         }
-    }
+    }*/
 
     /*private String getNoCachedConditionKey(DataClassDesc classDesc, SscCondition... conditions) {
         if (conditions == null || conditions.length == 0) {
@@ -1633,7 +1618,7 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    private int doCountByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private int doCountByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("countByCondition", List.class);
@@ -1641,9 +1626,9 @@ public class TableOperatorFactory {
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("countByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
         }
-    }
+    }*/
 
-    private List<Object> doSelectCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private List<Object> doSelectCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
@@ -1651,9 +1636,9 @@ public class TableOperatorFactory {
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
         }
-    }
+    }*/
 
-    private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("selectIdByCondition", List.class);
@@ -1661,7 +1646,7 @@ public class TableOperatorFactory {
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("selectIdByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
         }
-    }
+    }*/
 
     private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
         try {
@@ -1705,6 +1690,9 @@ public class TableOperatorFactory {
      * @return 属性的值
      */
     private Object getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
+        if (object == null) {
+            return null;
+        }
         Method getMethod = classDesc.getPropGetMethods().get(propName);
         try {
             return getMethod.invoke(object);
@@ -1772,14 +1760,26 @@ public class TableOperatorFactory {
     /**
      * 根据id和分表的数量获取id对应的表的索引
      */
-    private int getTableIndex(Object id, int tableCount) {
+    private int getTableIndex(DataClassDesc classDesc, Object object, Object id) {
+        int tableCount = classDesc.getTableCount();
         if (tableCount == 1) {
             // 不分表
             return 0;
         } else {
-            Comparable comparableId = (Comparable) id;
+            Object tableSplitFieldValue;
+            {
+                String tableSplitField = classDesc.getTableSplitField();
+                if (tableSplitField == null) {
+                    tableSplitFieldValue = id;
+                } else {
+                    tableSplitFieldValue = getFieldValueFromObject(classDesc, tableSplitField, object);
+                    assert  tableSplitFieldValue != null : new SscRuntimeException(String.format("插入数据失败，分表字段：%s 值为null, class: %s", tableSplitField, object.getClass().getName()));
+                }
+            }
+            Comparable comparableId = (Comparable) tableSplitFieldValue;
             // 根据id获取表的索引
-            TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(id.getClass()).floorEntry(comparableId).getValue();
+            TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(tableSplitFieldValue.getClass()).floorEntry(comparableId).getValue();
+            assert policy != null : new SscRuntimeException(String.format("字段类型:%s, 字段值:%s，未能找到对应的分表策略", tableSplitFieldValue.getClass(), tableSplitFieldValue));
             try {
                 Method method = policy.getClass().getMethod("getTableIndex", comparableId.getClass(), int.class);
                 return (int) method.invoke(policy, comparableId, tableCount);
@@ -1793,7 +1793,7 @@ public class TableOperatorFactory {
         SscDataConfigOfYaml configOfYaml = new SscDataConfigOfYaml();
         Map<String, SscData> classes = new HashMap<>();
         configOfYaml.classes = classes;
-        for (SscTableInfo tableInfo : tableNameMapping.values()) {
+        for (SscTableInfo tableInfo : tableInfoMapping.values()) {
             DataClassDesc classDesc = tableInfo.getClassDesc();
             classes.put(classDesc.getDataClass().getName(), SscData.transFrom(classDesc));
         }

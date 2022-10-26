@@ -1,6 +1,6 @@
 package com.hushaorui.ssc.common.data;
 
-import com.hushaorui.ssc.config.SingleSqlCacheConfig;
+import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 
 import java.lang.reflect.Method;
@@ -11,7 +11,7 @@ import java.util.*;
  */
 public class SscTableInfoMysql extends SscTableInfo {
 
-    public SscTableInfoMysql(DataClassDesc classDesc, SingleSqlCacheConfig config) {
+    public SscTableInfoMysql(DataClassDesc classDesc, SscGlobalConfig config) {
         super(classDesc, config);
         this.classDesc = classDesc;
         // id属性的名称
@@ -27,8 +27,16 @@ public class SscTableInfoMysql extends SscTableInfo {
                 throw new SscRuntimeException(String.format("The class: %s is not supported as an id", idJavaType.getName()));
             }
         }
-        if (! config.getTableSplitPolicyMap().containsKey(idJavaType)) {
-            throw new SscRuntimeException(String.format("There is no table split policy with class: %s, prop: %s", idJavaType.getName(), idPropName));
+        {
+            Class<?> tableSplitFieldType;
+            if (classDesc.getTableSplitField() == null) {
+                tableSplitFieldType = idJavaType;
+            } else {
+                tableSplitFieldType = propGetMethods.get(classDesc.getTableSplitField()).getReturnType();
+            }
+            if (! config.getTableSplitPolicyMap().containsKey(tableSplitFieldType)) {
+                throw new SscRuntimeException(String.format("There is no table split policy with class: %s, prop: %s", idJavaType.getName(), idPropName));
+            }
         }
         int tableCount = classDesc.getTableCount();
         String[] tableNames = new String[tableCount];
@@ -42,12 +50,6 @@ public class SscTableInfoMysql extends SscTableInfo {
         String[] updateAllNotCachedByIdSql = new String[tableCount];
         String[] deleteByIdSql = new String[tableCount];
         String[] selectMaxIdSql = new String[tableCount];
-        Map<String, StringBuilder[]> uniqueCreateSqlTempMap;
-        if (tableCount > 1) {
-            uniqueCreateSqlTempMap = new HashMap<>();
-        } else {
-            uniqueCreateSqlTempMap = Collections.emptyMap();
-        }
         Map<String, StringBuilder[]> uniqueSelectSqlTempMap = new HashMap<>();
         // 决定表名后面拼接的数字长度
         int numberLength;
@@ -101,19 +103,6 @@ public class SscTableInfoMysql extends SscTableInfo {
                 create.append(",\n    ");
                 create.append("unique key(");
 
-                StringBuilder[] uniqueCreateSql;
-                if (tableCount > 1) {
-                    uniqueCreateSql = uniqueCreateSqlTempMap.computeIfAbsent(uniqueName, k -> new StringBuilder[tableCount]);
-                    uniqueCreateSql[i] = new StringBuilder();
-                    uniqueCreateSql[i].append("create table if not exists ").append(realTableName).append("_")
-                            .append(uniqueName).append(config.getUniqueTableNameSuffix()).append("(\n    ");
-                    // 可能多个字段联合唯一，新建的辅助表只能使用自增主键，id名称使用 uniqueName，类型使用长整型
-                    String uniqueIdName = config.getUniqueTableIdName();
-                    uniqueCreateSql[i].append(uniqueIdName).append(" BIGINT").append(" primary key,\n    ").append(idColumnName).append(" ")
-                            .append(classDesc.getPropColumnTypeMapping().get(idPropName)).append(" unique not null,\n    ");
-                } else {
-                    uniqueCreateSql = null;
-                }
                 StringBuilder[] uniqueSelectSql = uniqueSelectSqlTempMap.computeIfAbsent(uniqueName, k -> new StringBuilder[tableCount]);
                 uniqueSelectSql[i] = new StringBuilder();
                 uniqueSelectSql[i].append("select * from ").append(realTableName).append(" where ");
@@ -124,37 +113,20 @@ public class SscTableInfoMysql extends SscTableInfo {
                 selectByUniqueKey.append(" where ");
 
                 Iterator<String> iterator = names.iterator();
-                StringBuilder namesBuilder = new StringBuilder();
                 while (iterator.hasNext()) {
                     String uniquePropName = iterator.next();
                     String uniqueColumnName = classDesc.getColumnByProp(uniquePropName);
                     create.append(uniqueColumnName);
                     selectByUniqueKey.append(uniqueColumnName).append(" = ?");
-                    namesBuilder.append(uniqueColumnName);
                     uniqueSelectSql[i].append(uniqueColumnName).append(" = ?");
-
-                    if (tableCount > 1) {
-                        uniqueCreateSql[i].append(uniqueColumnName).append(" ").append(classDesc.getPropColumnTypeMapping().get(uniquePropName));
-                        if (classDesc.getNotNullProps().contains(uniquePropName)) {
-                            uniqueCreateSql[i].append(" not null");
-                        }
-                    }
 
                     if (iterator.hasNext()) {
                         create.append(", ");
-                        namesBuilder.append(", ");
                         selectByUniqueKey.append(AND_STRING);
                         uniqueSelectSql[i].append(AND_STRING);
                     }
-                    if (tableCount > 1) {
-                        uniqueCreateSql[i].append(",\n    ");
-                    }
                 }
                 create.append(")");
-
-                if (tableCount > 1) {
-                    uniqueCreateSql[i].append("unique key(").append(namesBuilder).append(")\n)");
-                }
 
                 if (i < createTableSql.length - 1) {
                     // 不是最后一个表
@@ -236,9 +208,6 @@ public class SscTableInfoMysql extends SscTableInfo {
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;
 
-        this.selectByConditionSql = getSelectConditionSql();
-        this.countByConditionSql = getCountConditionSql();
-        this.selectIdByConditionSql = getSelectIdConditionSql();
         this.updateAllNotCachedByIdSql = updateAllNotCachedByIdSql;
         this.deleteByIdSql = deleteByIdSql;
         this.selectMaxIdSql = selectMaxIdSql;

@@ -2,7 +2,6 @@ package com.hushaorui.ssc.test.common;
 
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
-import com.hushaorui.ssc.param.ValueConditionEnum;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -30,8 +29,7 @@ public class TestPlayer {
     private String thirdType;
     @FieldDesc(uniqueName = "third_type_third_id")
     private Long thirdId;
-    @FieldDesc(isNotUpdate = true, isNotNull = true,
-            selectorNames = {"selectNewPlayer", "selectNewPlayer"}, selectorType = {ValueConditionEnum.ValueGreatOrEqual, ValueConditionEnum.ValueLessThan})
+    @FieldDesc(isNotUpdate = true, isNotNull = true)
     private Long createTime;
     private Timestamp birthdayTime;
     private Date primarySchoolStartDay;

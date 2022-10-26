@@ -18,7 +18,7 @@ import java.util.TreeMap;
 /**
  * 中心配置
  */
-public class SingleSqlCacheConfig {
+public class SscGlobalConfig {
     /**缓存默认最大闲置时间(不使用后开始计算) 单位：毫秒，默认5分钟，如果设置为0或小于0，则表示关闭缓存 */
     private long maxInactiveTime = 300000;
     /** 缓存默认持久化间隔时间，同时清理闲置缓存 单位：毫秒 */
@@ -27,10 +27,6 @@ public class SingleSqlCacheConfig {
     private TableNameStyle tableNameStyle = TableNameStyle.LOWERCASE_UNDERLINE;
     /** 字段名风格 (没有指定字段名时使用) */
     private ColumnNameStyle columnNameStyle = ColumnNameStyle.LOWERCASE_UNDERLINE;
-    /** 唯一键辅助表的表名后缀 */
-    private String uniqueTableNameSuffix = "_assist_table";
-    /** 唯一键辅助表的id名称，如果和你的表字段名称重复，请重设此值 */
-    private String uniqueTableIdName = "assist_id";
     /** 中心配置文件的路径(类路径下) */
     private String classesDescFilePath = "ssc.yml";
     /** 日志打印类 */
@@ -141,22 +137,6 @@ public class SingleSqlCacheConfig {
 
     public void setColumnNameStyle(ColumnNameStyle columnNameStyle) {
         this.columnNameStyle = columnNameStyle;
-    }
-
-    public String getUniqueTableNameSuffix() {
-        return uniqueTableNameSuffix;
-    }
-
-    public void setUniqueTableNameSuffix(String uniqueTableNameSuffix) {
-        this.uniqueTableNameSuffix = uniqueTableNameSuffix;
-    }
-
-    public String getUniqueTableIdName() {
-        return uniqueTableIdName;
-    }
-
-    public void setUniqueTableIdName(String uniqueTableIdName) {
-        this.uniqueTableIdName = uniqueTableIdName;
     }
 
     public String getClassesDescFilePath() {

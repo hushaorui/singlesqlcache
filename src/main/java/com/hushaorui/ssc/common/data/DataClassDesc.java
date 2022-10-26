@@ -15,6 +15,8 @@ public class DataClassDesc extends CommonClassDesc {
     private String tableName;
     /** 分表的数量 */
     private int tableCount;
+    /** 分表字段 */
+    private String tableSplitField;
     /** 是否启用缓存 */
     private boolean cached;
 
@@ -30,8 +32,6 @@ public class DataClassDesc extends CommonClassDesc {
     private Map<String, String> propDefaultValues;
     /** 所有唯一键的字段集合 */
     private Map<String, Set<String>> uniqueProps;
-    /** 所有需要添加缓存的条件查询字段集合 */
-    private Map<String, List<SscValue>> conditionProps;
     /** 所有不会更新的字段集合 */
     private Set<String> notUpdateProps;
     /** 所有忽略的字段集合 */
@@ -57,6 +57,14 @@ public class DataClassDesc extends CommonClassDesc {
 
     public void setTableCount(int tableCount) {
         this.tableCount = tableCount;
+    }
+
+    public String getTableSplitField() {
+        return tableSplitField;
+    }
+
+    public void setTableSplitField(String tableSplitField) {
+        this.tableSplitField = tableSplitField;
     }
 
     public boolean isCached() {
@@ -115,14 +123,6 @@ public class DataClassDesc extends CommonClassDesc {
         this.uniqueProps = uniqueProps;
     }
 
-    public Map<String, List<SscValue>> getConditionProps() {
-        return conditionProps;
-    }
-
-    public void setConditionProps(Map<String, List<SscValue>> conditionProps) {
-        this.conditionProps = conditionProps;
-    }
-
     public Set<String> getNotUpdateProps() {
         return notUpdateProps;
     }
@@ -164,8 +164,8 @@ public class DataClassDesc extends CommonClassDesc {
         classDesc.tableName = data.tableName;
         // 默认为1，不分表
         classDesc.tableCount = data.tableCount <= 0 ? 1 : data.tableCount;
+        classDesc.tableSplitField = data.tableSplitField.length() == 0 ? null : data.tableSplitField;
         classDesc.idPropName = data.idPropName;
-        classDesc.conditionProps = data.conditionProps;
         classDesc.uniqueProps = new HashMap<>();
         data.uniqueProps.forEach((uniqueName, list) -> classDesc.uniqueProps.put(uniqueName, new HashSet<>(list)));
         // 默认为true，启用缓存

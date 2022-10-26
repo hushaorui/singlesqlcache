@@ -1,7 +1,6 @@
 package com.hushaorui.ssc.common.data;
 
-import com.hushaorui.ssc.config.SingleSqlCacheConfig;
-import com.hushaorui.ssc.config.SscValue;
+import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.param.*;
 import javafx.util.Pair;
 
@@ -26,14 +25,9 @@ public abstract class SscTableInfo {
     /** 根据唯一约束的字段查询数据 */
     protected Map<String, String> selectByUniqueKeySql;
     /** 根据指定字段查询数据 */
-    protected Map<String, String> selectByConditionSql;
-    /** 根据指定字段查询数据 */
     protected Map<String, String> noCachedSelectByConditionSql;
     /** 根据指定字段查询数据的数量 */
-    protected Map<String, String> countByConditionSql;
-    /** 根据指定字段查询数据的数量 */
     protected Map<String, String> noCachedCountByConditionSql;
-    protected Map<String, String> selectIdByConditionSql;
     protected Map<String, String> noCachedSelectIdByConditionSql;
 
     /** 所有不需要缓存的数据更新 */
@@ -63,32 +57,8 @@ public abstract class SscTableInfo {
         return insertSql;
     }
 
-    public String getSelectAllSql() {
-        return selectAllSql;
-    }
-
     public String[] getSelectByIdSql() {
         return selectByIdSql;
-    }
-
-    public Map<String, String> getSelectByUniqueKeySql() {
-        return selectByUniqueKeySql;
-    }
-
-    public Map<String, String> getSelectByConditionSql() {
-        return selectByConditionSql;
-    }
-
-    public Map<String, String> getCountByConditionSql() {
-        return countByConditionSql;
-    }
-
-    public Map<String, String> getSelectIdByConditionSql() {
-        return selectIdByConditionSql;
-    }
-
-    public Map<String, String> getNoCachedSelectByConditionSql() {
-        return noCachedSelectByConditionSql;
     }
 
     public String[] getUpdateAllNotCachedByIdSql() {
@@ -119,32 +89,8 @@ public abstract class SscTableInfo {
         return tableNames;
     }
 
-    public SscTableInfo(DataClassDesc classDesc, SingleSqlCacheConfig config) {
+    public SscTableInfo(DataClassDesc classDesc, SscGlobalConfig config) {
         this.classDesc = classDesc;
-    }
-
-    public SscSqlResult getSelectByConditionSql(String key, List<Pair<String, Object>> conditions) {
-        String sql  = selectByConditionSql.get(key);
-        if (sql == null) {
-            return null;
-        }
-        return getParamsAndSql(sql, conditions);
-    }
-
-    public SscSqlResult getCountByConditionSql(String key, List<Pair<String, Object>> conditions) {
-        String sql = countByConditionSql.get(key);
-        if (sql == null) {
-            return null;
-        }
-        return getParamsAndSql(sql, conditions);
-    }
-
-    public SscSqlResult getSelectIdByConditionSql(String key, List<Pair<String, Object>> conditions) {
-        String sql = selectIdByConditionSql.get(key);
-        if (sql == null) {
-            return null;
-        }
-        return getParamsAndSql(sql, conditions);
     }
 
     /**
@@ -287,7 +233,7 @@ public abstract class SscTableInfo {
         return key.toString().intern();
     }
 
-    protected String getConditionKey(List<SscValue> propAndTypes) {
+    /*protected String getConditionKey(List<SscValue> propAndTypes) {
         StringBuilder key = new StringBuilder();
         Iterator<SscValue> iterator = propAndTypes.iterator();
         while (iterator.hasNext()) {
@@ -302,30 +248,7 @@ public abstract class SscTableInfo {
             }
         }
         return key.toString().intern();
-    }
-
-    protected Map<String, String> getSelectConditionSql() {
-        Map<String, String> map = new HashMap<>();
-        // select xx.* from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
-        Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 1));
-        return map;
-    }
-    protected Map<String, String> getCountConditionSql() {
-        Map<String, String> map = new HashMap<>();
-        // select count(id) from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
-        Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 2));
-        return map;
-    }
-
-    protected Map<String, String> getSelectIdConditionSql() {
-        Map<String, String> map = new HashMap<>();
-        // select xx.id from xx where xx = ? and xx = ? union all select xx.* from xx where xx = ? and xx = ?
-        Map<String, List<SscValue>> conditionProps = classDesc.getConditionProps();
-        conditionProps.forEach((selectorName, propAndTypes) -> putConditionSqlToMap(propAndTypes, map, 3));
-        return map;
-    }
+    }*/
 
     protected abstract void appendLimitString(StringBuilder builder);
 
@@ -424,7 +347,7 @@ public abstract class SscTableInfo {
         return builder;
     }
 
-    protected void putConditionSqlToMap(List<SscValue> propAndTypes, Map<String, String> map, int sqlType) {
+    /*protected void putConditionSqlToMap(List<SscValue> propAndTypes, Map<String, String> map, int sqlType) {
         StringBuilder builder = new StringBuilder();
         SscResult sscResult = new SscResult();
         int tableCount = classDesc.getTableCount();
@@ -457,9 +380,9 @@ public abstract class SscTableInfo {
             appendLimitString(builder);
         }
         map.put(getConditionKey(propAndTypes), builder.toString());
-    }
+    }*/
 
-    private StringBuilder iteratorPropAndTypes(List<SscValue> propAndTypes, SscResult sscResult) {
+    /*private StringBuilder iteratorPropAndTypes(List<SscValue> propAndTypes, SscResult sscResult) {
         StringBuilder builder = new StringBuilder();
         Iterator<SscValue> iterator = propAndTypes.iterator();
         boolean notFirst = false;
@@ -490,5 +413,5 @@ public abstract class SscTableInfo {
             }
         }
         return builder;
-    }
+    }*/
 }
