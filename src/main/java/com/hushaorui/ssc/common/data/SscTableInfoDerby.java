@@ -163,7 +163,7 @@ public class SscTableInfoDerby extends SscTableInfo {
             }
             create.append("\n)");
             createTableSql[i] = create.toString();
-            dropTableSql[i] = "drop table if exists " + realTableName;
+            dropTableSql[i] = "drop table " + realTableName;
 
             {
                 StringBuilder insert = new StringBuilder("insert into ");

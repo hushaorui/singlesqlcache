@@ -746,8 +746,10 @@ public class TableOperatorFactory {
 
     private void dropTable(String[] dropTableSql) {
         for (String sql : dropTableSql) {
-            jdbcTemplate.execute(sql);
-            log.info("删除表, sql: " + sql);
+            try {
+                jdbcTemplate.execute(sql);
+                log.info("删除表, sql: " + sql);
+            } catch (Exception ignore) {}
         }
     }
 
