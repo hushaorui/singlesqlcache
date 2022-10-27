@@ -87,6 +87,11 @@ public class SscTableInfoDerby extends SscTableInfo {
                 }
                 create.append(",\n    ");
                 create.append(columnName).append(" ").append(classDesc.getPropColumnTypeMapping().get(propName));
+                Set<String> uniqueKeySet = classDesc.getUniqueProps().get(propName);
+                if (uniqueKeySet != null && uniqueKeySet.size() == 1) {
+                    // 该字段唯一
+                    create.append(" unique");
+                }
                 if (classDesc.getNotNullProps().contains(propName)) {
                     // 该字段非空
                     create.append(" not null");
@@ -102,8 +107,8 @@ public class SscTableInfoDerby extends SscTableInfo {
             for (Map.Entry<String, Set<String>> next : classDesc.getUniqueProps().entrySet()) {
                 String uniqueName = next.getKey();
                 Set<String> names = next.getValue();
-                create.append(",\n    ");
-                create.append("unique key(");
+                //create.append(",\n    ");
+                //create.append("unique key(");
 
                 StringBuilder[] uniqueSelectSql = uniqueSelectSqlTempMap.computeIfAbsent(uniqueName, k -> new StringBuilder[tableCount]);
                 uniqueSelectSql[i] = new StringBuilder();
@@ -118,17 +123,17 @@ public class SscTableInfoDerby extends SscTableInfo {
                 while (iterator.hasNext()) {
                     String uniquePropName = iterator.next();
                     String uniqueColumnName = classDesc.getColumnByProp(uniquePropName);
-                    create.append(uniqueColumnName);
+                    //create.append(uniqueColumnName);
                     selectByUniqueKey.append(uniqueColumnName).append(" = ?");
                     uniqueSelectSql[i].append(uniqueColumnName).append(" = ?");
 
                     if (iterator.hasNext()) {
-                        create.append(", ");
+                        //create.append(", ");
                         selectByUniqueKey.append(AND_STRING);
                         uniqueSelectSql[i].append(AND_STRING);
                     }
                 }
-                create.append(")");
+                //create.append(")");
 
                 if (i < createTableSql.length - 1) {
                     // 不是最后一个表
