@@ -116,6 +116,13 @@ public interface Operator<DATA> {
     }
 
     /**
+     * 根据分表字段查询数据
+     * @param tableSplitFieldValue 分表字段值
+     * @return 数据集合
+     */
+    List<DATA> selectByTableSplitField(Comparable tableSplitFieldValue);
+
+    /**
      * 获取数据库操作类
      * @return 数据库操作类
      */

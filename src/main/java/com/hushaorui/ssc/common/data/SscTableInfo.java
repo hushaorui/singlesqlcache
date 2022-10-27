@@ -22,6 +22,9 @@ public abstract class SscTableInfo {
     protected String selectAllSql;
     /** 根据id查询指定数据 */
     protected String[] selectByIdSql;
+    /** 根据分表字段查询(每种数据只能有一个分表字段) */
+    protected String[] selectByTableSplitFieldSql;
+
     /** 根据唯一约束的字段查询数据 */
     protected Map<String, String> selectByUniqueKeySql;
     /** 根据指定字段查询数据 */
@@ -29,6 +32,7 @@ public abstract class SscTableInfo {
     /** 根据指定字段查询数据的数量 */
     protected Map<String, String> noCachedCountByConditionSql;
     protected Map<String, String> noCachedSelectIdByConditionSql;
+
 
     /** 所有不需要缓存的数据更新 */
     protected String[] updateAllNotCachedByIdSql;
@@ -61,6 +65,9 @@ public abstract class SscTableInfo {
         return selectByIdSql;
     }
 
+    public String[] getSelectByTableSplitFieldSql() {
+        return selectByTableSplitFieldSql;
+    }
     public String[] getUpdateAllNotCachedByIdSql() {
         return updateAllNotCachedByIdSql;
     }

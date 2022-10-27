@@ -27,12 +27,13 @@ public class SscTableInfoDerby extends SscTableInfo {
                 throw new SscRuntimeException(String.format("The class: %s is not supported as an id", idJavaType.getName()));
             }
         }
+        String tableSplitField = classDesc.getTableSplitField();
         {
             Class<?> tableSplitFieldType;
-            if (classDesc.getTableSplitField() == null) {
+            if (tableSplitField == null) {
                 tableSplitFieldType = idJavaType;
             } else {
-                tableSplitFieldType = propGetMethods.get(classDesc.getTableSplitField()).getReturnType();
+                tableSplitFieldType = propGetMethods.get(tableSplitField).getReturnType();
             }
             if (! config.getTableSplitPolicyMap().containsKey(tableSplitFieldType)) {
                 throw new SscRuntimeException(String.format("There is no table split policy with class: %s, prop: %s", idJavaType.getName(), idPropName));
@@ -45,6 +46,7 @@ public class SscTableInfoDerby extends SscTableInfo {
         String[] insertSql = new String[tableCount];
         StringBuilder selectAll = new StringBuilder();
         String[] selectByIdSql = new String[tableCount];
+        String[] selectByTableSplitFieldSql = new String[tableCount];
         Map<String, StringBuilder> selectByUniqueKeySqlMap = new HashMap<>();
 
         String[] updateAllNotCachedByIdSql = new String[tableCount];
@@ -169,6 +171,9 @@ public class SscTableInfoDerby extends SscTableInfo {
                 selectAll.append("\n union all \n");
             }
             selectByIdSql[i] = String.format("select * from %s where %s = ?", realTableName, idColumnName);
+            if (tableSplitField != null) {
+                selectByTableSplitFieldSql[i] = String.format("select * from %s where %s = ?", realTableName, classDesc.getColumnByProp(tableSplitField));
+            }
 
             deleteByIdSql[i] = String.format("delete from %s where %s = ?", realTableName, idColumnName);
 
@@ -204,6 +209,7 @@ public class SscTableInfoDerby extends SscTableInfo {
         this.insertSql = insertSql;
         this.selectAllSql = selectAll.toString();
         this.selectByIdSql = selectByIdSql;
+        this.selectByTableSplitFieldSql = selectByTableSplitFieldSql;
         Map<String, String> selectByUniqueKeySql = new HashMap<>();
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;

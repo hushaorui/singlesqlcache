@@ -1,7 +1,5 @@
 package com.hushaorui.ssc.common.anno;
 
-import com.hushaorui.ssc.param.ValueConditionEnum;
-
 import java.lang.annotation.*;
 
 /**
@@ -28,8 +26,4 @@ public @interface FieldDesc {
     String uniqueName() default "";
     /** 字段不更新 (只在插入数据时设值，不再更新，如createTime等) */
     boolean isNotUpdate() default false;
-    /** 多字段条件查询时，有此标注的才会产生缓存 */
-    String[] selectorNames() default "";
-    /** 多字段查询时，有此标注的才会产生缓存(只有 selectorNames有值时才会生效) */
-    ValueConditionEnum[] selectorType() default ValueConditionEnum.Equal;
 }

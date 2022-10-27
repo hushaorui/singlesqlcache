@@ -56,10 +56,10 @@ public class TableOperatorFactory {
      * 针对唯一字段的数据缓存 key1:pojoClass, key2:uniqueFieldName, key3:uniqueFieldValue, value:cacheObject
      */
     private Map<Class<?>, Map<String, Map<Object, ObjectInstanceCache>>> uniqueFieldCacheMap = new ConcurrentHashMap<>();
-    ///*
-    // * 针对多字段条件查询的数据缓存 key1:pojoClass, key2:selectorName, key3:selectorValue, value:cacheObject
-    // */
-    //private Map<Class<?>, Map<String, Map<Object, ObjectListCache>>> conditionCacheMap = new ConcurrentHashMap<>();
+    /**
+     * 针对分表字段条件查询的数据缓存 key1:pojoClass, key2:分表字段名称, key3:字段的值, value:cacheObject
+     */
+    private Map<Class<?>, Map<Comparable, ObjectListCache>> tableSplitFieldCacheMap = new ConcurrentHashMap<>();
 
     /**
      * 存入缓存的开关
@@ -108,10 +108,11 @@ public class TableOperatorFactory {
             this.name = TableOperatorFactory.class.getSimpleName() + "-" + name + "-Timer";
             timer = new Timer(this.name);
             // 默认 60000 (一分钟)
-            timer.schedule(timerTask = getTimerTask(), globalConfig.getPersistenceIntervalTime(), globalConfig.getPersistenceIntervalTime());
+            long persistenceIntervalTime = globalConfig.getPersistenceIntervalTime();
+            timer.schedule(timerTask = getTimerTask(), persistenceIntervalTime, persistenceIntervalTime);
             saveSwitch = true;
             getSwitch = true;
-            log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", globalConfig.getPersistenceIntervalTime(), globalConfig.getMaxInactiveTime()));
+            log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime()));
             if (globalConfig.isAddShutdownHook()) {
                 // 程序关闭前执行
                 Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
@@ -227,22 +228,22 @@ public class TableOperatorFactory {
                         });
                         return outerMap.isEmpty();
                     });
-                    /*conditionCacheMap.entrySet().removeIf(entry1 -> {
-                        Map<String, Map<Object, ObjectListCache>> map1 = entry1.getValue();
-                        map1.entrySet().removeIf(entry2 -> {
-                            Map<Object, ObjectListCache> map2 = entry2.getValue();
-                            map2.entrySet().removeIf(entry -> {
-                                long lastUseTime = entry.getValue().getLastUseTime();
+                    tableSplitFieldCacheMap.entrySet().removeIf(entry1 -> {
+                        Map<Comparable, ObjectListCache> map = entry1.getValue();
+                        map.entrySet().removeIf(entry2 -> {
+                            map.entrySet().removeIf(entry -> {
+                                ObjectListCache objectListCache = entry.getValue();
+                                long lastUseTime = objectListCache.getLastUseTime();
                                 boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.info(String.format("因长时间未使用，删除条件缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.info(String.format("因长时间未使用，删除(tableSplitField)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
                                 }
                                 return delete;
                             });
-                            return map2.isEmpty();
+                            return map.isEmpty();
                         });
-                        return map1.isEmpty();
-                    });*/
+                        return map.isEmpty();
+                    });
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -272,6 +273,8 @@ public class TableOperatorFactory {
         idCacheMap.clear();
         // 清理所有唯一字段值缓存
         uniqueFieldCacheMap.clear();
+        // 清理分表字段值缓存
+        tableSplitFieldCacheMap.clear();
         // 最后关闭取缓存开关，保证缓存中的数据都同步到了数据库后才开始从数据库中直接拿数据
         getSwitch = false;
         log.warn("缓存已关闭");
@@ -803,7 +806,7 @@ public class TableOperatorFactory {
     private <T> Operator<T> getNoCachedOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (Operator<T>) noCachedOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
-            private RowMapper<T> rowMapper;
+            private RowMapper<Object> rowMapper;
 
             @Override
             public void insert(Object object) {
@@ -868,7 +871,7 @@ public class TableOperatorFactory {
                 jdbcTemplate.update(deleteSql, id);
             }
 
-            private RowMapper<T> getRowMapper() {
+            private RowMapper<Object> getRowMapper() {
                 if (rowMapper == null) {
                     synchronized (this) {
                         if (rowMapper == null) {
@@ -940,7 +943,7 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
-                return jdbcTemplate.query(sscSqlResult.getSql(), (RowMapper<Object>) getRowMapper(), params);
+                return jdbcTemplate.query(sscSqlResult.getSql(), getRowMapper(), params);
             }
 
             @Override
@@ -967,6 +970,17 @@ public class TableOperatorFactory {
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 return (List<T>) jdbcTemplate.queryForList(sscSqlResult.getSql(), (Class<Object>) sscTableInfo.getIdJavaType(), params);
+            }
+
+            @Override
+            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+                // 根据分表字段获取对应的表的索引
+                int tableIndex = getTableIndex(tableSplitFieldValue, tableSplitFieldValue, classDesc.getTableCount());
+                // 获取对应的sql
+                String sql = sscTableInfo.getSelectByTableSplitFieldSql()[tableIndex];
+                assert sql != null : new SscRuntimeException("未能找到对应表索引的sql, index: " + tableIndex);
+                // 执行sql
+                return jdbcTemplate.query(sql, getRowMapper(), tableSplitFieldValue);
             }
 
             @Override
@@ -1110,6 +1124,8 @@ public class TableOperatorFactory {
                             // 唯一键的缓存
                             // 尝试获取数据对象中的唯一字段(或联合字段)的值
                             addUniqueValueCache(classDesc, object, cache);
+                            // 尝试添加分表字段缓存
+                            addTableSplitFieldCache(classDesc, object, id);
                         }
                     }
                     // 当前状态
@@ -1415,58 +1431,93 @@ public class TableOperatorFactory {
             @Override
             public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
                 return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
-                /*if (!getSwitch) {
-                    // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    return doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                }
-                String key = sscTableInfo.getKeyByConditionList(conditions);
-                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
-                    // 不使用缓存
-                    return doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                }
-                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
-                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
-                Object uniqueValue = getUniqueValueByMap(conditions);
-                ObjectListCache cache = cacheMap.get(uniqueValue);
-                if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    // 缓存击穿，查询数据库，所有id
-                    List<Serializable> idList = doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                    // 放入缓存
-                    ObjectListCache objectListCache = new ObjectListCache();
-                    if (idList == null) {
-                        objectListCache.setIdList(Collections.emptyList());
-                    } else {
-                        objectListCache.setIdList(idList);
-                    }
-                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
-                    long now = System.currentTimeMillis();
-                    objectListCache.setLastUseTime(now);
-                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
-                    return (List<T>) idList;
-                } else {
-                    if (cache.getCacheStatus().isDelete()) {
-                        // 该对象需要删除或已被删除
-                        return Collections.emptyList();
-                    }
-                    // 更新最后一次使用时间(不设置，到时间就删除)
-                    //cache.setLastUseTime(System.currentTimeMillis());
-                    List<Serializable> idList = cache.getIdList();
-                    return idList == null ? Collections.emptyList() : (List<T>) idList;
-                }*/
             }
 
-            /*@Override
-            public List<Object> selectByCondition(SscCondition... conditions) {
-                return null;
-            }*/
+            private List<Serializable> getIdListFromDb(Comparable tableSplitFieldValue) {
+                ArrayList<Serializable> idList = new ArrayList<>();
+                List<Object> dataList = (List<Object>) getNoCachedOperator(clazz, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
+                if (dataList != null) {
+                    for (Object data : dataList) {
+                        Serializable idValue = getIdValueFromObject(classDesc, data);
+                        if (idValue == null) {
+                            continue;
+                        }
+                        idList.add(idValue);
+                        // 添加id缓存
+                        insertOrUpDateOrDelete(clazz, idValue, data, CacheStatus.AFTER_INSERT);
+                    }
+                }
+                return idList;
+            }
+
+            @Override
+            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), tableSplitFieldValue));
+                    return (List<Object>) getNoCachedOperator(clazz, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
+                }
+                Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>());
+                ObjectListCache cache = cacheMap.computeIfAbsent(tableSplitFieldValue, k2 -> {
+                    log.info(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", clazz.getName(), tableSplitFieldValue));
+                    ObjectListCache objectListCache = new ObjectListCache();
+                    // 缓存击穿，查询数据库
+                    List<Serializable> idList = getIdListFromDb(tableSplitFieldValue);
+                    objectListCache.setIdList(Collections.synchronizedList(idList));
+                    // 这里不是作为缓存的状态，而是作为一个标记，标记为已查询过数据库
+                    objectListCache.setCacheStatus(CacheStatus.AFTER_UPDATE);
+                    objectListCache.setLastUseTime(System.currentTimeMillis());
+                    return objectListCache;
+                });
+                if (CacheStatus.AFTER_INSERT.equals(cache.getCacheStatus())) {
+                    // 没有查询过数据库，查询一下
+                    List<Serializable> idList = getIdListFromDb(tableSplitFieldValue);
+                    synchronized (cache) {
+                        cache.getIdList().addAll(idList);
+                        // 标记为已查询过数据库
+                        cache.setCacheStatus(CacheStatus.AFTER_UPDATE);
+                    }
+                }
+                cache.setLastUseTime(System.currentTimeMillis());
+                List<Serializable> idList = cache.getIdList();
+                List<Object> dataList = new ArrayList<>(idList.size());
+                for (Serializable idValue : idList) {
+                    // 根据id去查询对应的数据
+                    Object data = selectById(idValue);
+                    if (data == null) {
+                        continue;
+                    }
+                    dataList.add(data);
+                }
+                return dataList;
+            }
 
             @Override
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
         }) : getNoCachedOperator(dataClass, sscTableInfo);
+    }
+
+    private void addTableSplitFieldCache(DataClassDesc classDesc, Object object, Serializable id) {
+        String tableSplitField = classDesc.getTableSplitField();
+        if (tableSplitField == null) {
+            return;
+        }
+        Object fieldValue = getFieldValueFromObject(classDesc, tableSplitField, object);
+        if (fieldValue == null) {
+            log.error(String.format("分表字段:%s为null", tableSplitField));
+            return;
+        }
+        Comparable comparable = (Comparable) fieldValue;
+        Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(classDesc.getDataClass(), k1 -> new ConcurrentHashMap<>());
+        cacheMap.computeIfAbsent(comparable, k2 -> {
+            ObjectListCache objectListCache = new ObjectListCache();
+            objectListCache.setIdList(Collections.synchronizedList(new ArrayList<>()));
+            // 这里仅仅作为标记，并不代表缓存的状态
+            objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+            return objectListCache;
+        }).getIdList().add(id);
     }
 
     /**
@@ -1776,16 +1827,19 @@ public class TableOperatorFactory {
                     assert  tableSplitFieldValue != null : new SscRuntimeException(String.format("插入数据失败，分表字段：%s 值为null, class: %s", tableSplitField, object.getClass().getName()));
                 }
             }
-            Comparable comparableId = (Comparable) tableSplitFieldValue;
-            // 根据id获取表的索引
-            TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(tableSplitFieldValue.getClass()).floorEntry(comparableId).getValue();
-            assert policy != null : new SscRuntimeException(String.format("字段类型:%s, 字段值:%s，未能找到对应的分表策略", tableSplitFieldValue.getClass(), tableSplitFieldValue));
-            try {
-                Method method = policy.getClass().getMethod("getTableIndex", comparableId.getClass(), int.class);
-                return (int) method.invoke(policy, comparableId, tableCount);
-            } catch (Exception e) {
-                throw new SscRuntimeException(e);
-            }
+            return getTableIndex((Comparable) tableSplitFieldValue, tableSplitFieldValue, tableCount);
+        }
+    }
+
+    private int getTableIndex(Comparable comparableId, Object tableSplitFieldValue, int tableCount) {
+        // 根据id获取表的索引
+        TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(tableSplitFieldValue.getClass()).floorEntry(comparableId).getValue();
+        assert policy != null : new SscRuntimeException(String.format("字段类型:%s, 字段值:%s，未能找到对应的分表策略", tableSplitFieldValue.getClass(), tableSplitFieldValue));
+        try {
+            Method method = policy.getClass().getMethod("getTableIndex", comparableId.getClass(), int.class);
+            return (int) method.invoke(policy, comparableId, tableCount);
+        } catch (Exception e) {
+            throw new SscRuntimeException(e);
         }
     }
 

@@ -2,7 +2,6 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.config.SscData;
 import com.hushaorui.ssc.config.SscField;
-import com.hushaorui.ssc.config.SscValue;
 
 import java.util.*;
 
