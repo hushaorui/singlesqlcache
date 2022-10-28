@@ -35,6 +35,7 @@ public enum SscDataSourceType {
             ,Character.class, "VARCHAR"
             ,Timestamp.class, "TIMESTAMP"
             ,Date.class, "DATETIME"
+            ,byte[].class, "BLOB"
     ))),
     Derby(SscTableInfoDerby.class, Collections.unmodifiableMap(SscHashMap.of(
             String.class, "VARCHAR"
@@ -56,6 +57,7 @@ public enum SscDataSourceType {
             ,Character.class, "VARCHAR"
             ,Timestamp.class, "TIMESTAMP"
             ,Date.class, "DATETIME"
+            ,byte[].class, "BLOB"
     ))),
     ;
     /** sql 拼接的实现类 */

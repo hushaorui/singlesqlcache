@@ -1075,7 +1075,9 @@ public class TableOperatorFactory {
                                         Class<?> propType = classDesc.getPropGetMethods().get(propName).getReturnType();
                                         String methodName;
                                         // 如果有其他特殊的方法，这里还需要添加
-                                        if (Integer.class.equals(propType) || int.class.equals(propType)) {
+                                        if (byte[].class.equals(propType)) {
+                                            methodName = "getBytes";
+                                        } else if (Integer.class.equals(propType) || int.class.equals(propType)) {
                                             methodName = "getInt";
                                         } else {
                                             if (propType.isPrimitive()) {

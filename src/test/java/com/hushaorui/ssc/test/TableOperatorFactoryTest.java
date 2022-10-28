@@ -16,6 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -398,6 +399,24 @@ public class TableOperatorFactoryTest {
             operator.update(result);
             result = operator.selectByUniqueName("username", testPlayer);
             System.out.println("第二次查找：" + JSONArray.toJSONString(result));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_blob() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            TestPlayer testPlayer = new TestPlayer();
+            testPlayer.setUsername("张三1");
+            TestPlayer result = operator.selectByUniqueName("username", testPlayer);
+            byte[] byteData = result.getByteData();
+            if (byteData != null) {
+                System.out.println("byteData: " + new String(byteData, StandardCharsets.UTF_8));
+            }
+            result.setByteData("haha".getBytes(StandardCharsets.UTF_8.name()));
+            operator.update(result);
         } catch (Exception e) {
             e.printStackTrace();
         }

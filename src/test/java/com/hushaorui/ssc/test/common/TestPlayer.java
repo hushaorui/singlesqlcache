@@ -4,6 +4,7 @@ import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.Date;
 
 /*
@@ -35,6 +36,7 @@ public class TestPlayer {
     private Date primarySchoolStartDay;
     private Long lastLoginTime;
     private String lastLoginIp;
+    private byte[] byteData;
     //private TestAddress testAddress;
 
     // 该段不会保存
@@ -113,6 +115,14 @@ public class TestPlayer {
         this.lastLoginIp = lastLoginIp;
     }
 
+    public byte[] getByteData() {
+        return byteData;
+    }
+
+    public void setByteData(byte[] byteData) {
+        this.byteData = byteData;
+    }
+
     public String getExtraString() {
         return extraString;
     }
@@ -133,6 +143,7 @@ public class TestPlayer {
                 ", primarySchoolStartDay=" + primarySchoolStartDay +
                 ", lastLoginTime=" + lastLoginTime +
                 ", lastLoginIp='" + lastLoginIp + '\'' +
+                ", byteData=" + Arrays.toString(byteData) +
                 ", extraString='" + extraString + '\'' +
                 '}';
     }
