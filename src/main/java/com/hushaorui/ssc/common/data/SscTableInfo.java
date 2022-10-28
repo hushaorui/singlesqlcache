@@ -46,6 +46,7 @@ public abstract class SscTableInfo {
     /** id的数据类型 */
     protected Class<?> idJavaType;
     protected Map<String, String> uniqueSelectSqlMap;
+    protected Map<String, String[]> uniqueAndFieldSelectSqlMap;
     /** 表名 */
     protected String[] tableNames;
 
@@ -90,6 +91,10 @@ public abstract class SscTableInfo {
 
     public Map<String, String> getUniqueSelectSqlMap() {
         return uniqueSelectSqlMap;
+    }
+
+    public Map<String, String[]> getUniqueAndFieldSelectSqlMap() {
+        return uniqueAndFieldSelectSqlMap;
     }
 
     public String[] getTableNames() {

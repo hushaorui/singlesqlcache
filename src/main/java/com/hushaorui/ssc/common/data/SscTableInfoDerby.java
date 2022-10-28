@@ -223,13 +223,17 @@ public class SscTableInfoDerby extends SscTableInfo {
         this.deleteByIdSql = deleteByIdSql;
         this.selectMaxIdSql = selectMaxIdSql;
         Map<String, String> uniqueSelectSqlMap;
+        Map<String, String[]> uniqueAndFieldSelectSqlMap;
         if (uniqueSelectSqlTempMap.isEmpty()) {
             uniqueSelectSqlMap = Collections.emptyMap();
+            uniqueAndFieldSelectSqlMap = Collections.emptyMap();
         } else {
             uniqueSelectSqlMap = new HashMap<>();
+            uniqueAndFieldSelectSqlMap = new HashMap<>();
             uniqueSelectSqlTempMap.forEach((key, value) -> {
                 StringBuilder builder = new StringBuilder();
                 for (int i = 0; i < value.length; i++) {
+                    uniqueAndFieldSelectSqlMap.computeIfAbsent(key, k -> new String[tableCount])[i] = value[i].toString();
                     builder.append(value[i]);
                     if (i != value.length - 1) {
                         builder.append("\n union all \n");
@@ -240,6 +244,7 @@ public class SscTableInfoDerby extends SscTableInfo {
         }
         //uniqueSelectSqlMap.values().forEach(System.out::println);
         this.uniqueSelectSqlMap = uniqueSelectSqlMap;
+        this.uniqueAndFieldSelectSqlMap = uniqueAndFieldSelectSqlMap;
     }
 
     @Override

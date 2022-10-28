@@ -51,7 +51,7 @@ public class TableOperatorFactory {
     /**
      * 数据库的数据缓存 key1:pojoClass, key2:idValue, value:cacheObject
      */
-    private Map<Class<?>, Map<Serializable, ObjectInstanceCache>> idCacheMap = new ConcurrentHashMap<>();
+    private Map<Class<?>, Map<Comparable, ObjectInstanceCache>> idCacheMap = new ConcurrentHashMap<>();
     /**
      * 针对唯一字段的数据缓存 key1:pojoClass, key2:uniqueFieldName, key3:uniqueFieldValue, value:cacheObject
      */
@@ -77,10 +77,16 @@ public class TableOperatorFactory {
      * 给用户操作的缓存类
      */
     private final Map<Class<?>, Operator<?>> userOperatorMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, SpecialOperator<?>> userSpecialOperatorMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, CompletelyOperator<?>> userCompletelyOperatorMap = new ConcurrentHashMap<>();
     /**
      * 无缓存的操作类
      */
     private final Map<Class<?>, Operator<?>> noCachedOperatorMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, SpecialOperator<?>> noCachedSpecialOperatorMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, CompletelyOperator<?>> noCachedCompletelyOperatorMap = new ConcurrentHashMap<>();
+
+
     private final Set<String> allTableNames = Collections.synchronizedSet(new HashSet<>());
 
     public TableOperatorFactory(String name, JdbcTemplate jdbcTemplate, SscGlobalConfig globalConfig) {
@@ -803,8 +809,167 @@ public class TableOperatorFactory {
         return getNoCachedOperator(dataClass, sscTableInfo);
     }
 
+    private <T> SpecialOperator<T> getNoCachedSpecialOperator(Class<T> dataClass) {
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        if (sscTableInfo == null) {
+            throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
+        }
+        return getNoCachedSpecialOperator(dataClass, sscTableInfo);
+    }
+
+    private <T> SpecialOperator<T> getNoCachedSpecialOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
+        return (SpecialOperator<T>) noCachedSpecialOperatorMap.computeIfAbsent(dataClass, clazz -> new SpecialOperator<Object>() {
+            private CompletelyOperator<Object> completelyOperator = getNoCachedCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+            @Override
+            public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
+                return completelyOperator.selectById(id, tableSplitFieldValue);
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
+                return completelyOperator.selectByIdNotNull(id, tableSplitFieldValue, insertFunction);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object o) {
+                return completelyOperator.selectByUniqueName(uniqueName, tableSplitFieldValue, o);
+            }
+
+            @Override
+            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+                return completelyOperator.selectByTableSplitField(tableSplitFieldValue);
+            }
+
+            @Override
+            public void insert(Object o) {
+                completelyOperator.insert(o);
+            }
+
+            @Override
+            public void update(Object o) {
+                completelyOperator.update(o);
+            }
+
+            @Override
+            public void delete(Object o) {
+                completelyOperator.delete(o);
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectByCondition(conditions);
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                return (List<T>) completelyOperator.selectByCondition(conditions);
+            }
+
+            @Override
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.countByCondition(conditions);
+            }
+
+            @Override
+            public JdbcTemplate getJdbcTemplate() {
+                return completelyOperator.getJdbcTemplate();
+            }
+        });
+    }
     private <T> Operator<T> getNoCachedOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (Operator<T>) noCachedOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+            private CompletelyOperator<Object> completelyOperator = getNoCachedCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+            @Override
+            public void delete(Comparable id) {
+                completelyOperator.delete(id);
+            }
+
+            @Override
+            public Object selectById(Comparable id) {
+                return completelyOperator.selectById(id);
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Function<Comparable, Object> insertFunction) {
+                return completelyOperator.selectByIdNotNull(id, insertFunction);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Object o) {
+                return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public void insert(Object o) {
+                completelyOperator.insert(o);
+            }
+
+            @Override
+            public void update(Object o) {
+                completelyOperator.update(o);
+            }
+
+            @Override
+            public void delete(Object o) {
+                completelyOperator.delete(o);
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectByCondition(conditions);
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectIdByCondition(conditions);
+            }
+
+            @Override
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.countByCondition(conditions);
+            }
+
+            @Override
+            public JdbcTemplate getJdbcTemplate() {
+                return completelyOperator.getJdbcTemplate();
+            }
+        });
+    }
+
+    private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data) {
+        int size = propNames.size();
+        int tableCount = classDesc.getTableCount();
+        Object[] params = new Object[size * tableCount];
+        int index = 0;
+        for (String propName : propNames) {
+            params[index++] = getFieldValueFromObject(classDesc, propName, data);
+        }
+        int leftParamSize = (tableCount - 1) * size;
+        for (int i = 0; i < leftParamSize; i++) {
+            params[index] = params[index % size];
+            index++;
+        }
+        return params;
+    }
+
+    /**
+     * 将id设置到对象中去
+     */
+    private void setObjectId(Object object, Object id, DataClassDesc classDesc) {
+        Method idSetMethod = classDesc.getPropSetMethods().get(classDesc.getIdPropName());
+        try {
+            // 将新的id设置到对象中
+            idSetMethod.invoke(object, id);
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            throw new SscRuntimeException(e);
+        }
+    }
+    private <T> CompletelyOperator<T> getNoCachedCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
+        return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newCompletelyOperator(clazz, sscTableInfo));
+    }
+
+    private <T> CompletelyOperator<T> newNoCachedCompletelyOperator(Class<Object> clazz, SscTableInfo sscTableInfo) {
+        return (CompletelyOperator<T>) new CompletelyOperator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
             private RowMapper<Object> rowMapper;
 
@@ -829,11 +994,24 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public Object selectById(Serializable id, Function<Serializable, Object> insertFunction) {
+            public Object selectByIdNotNull(Comparable id, Function<Comparable, Object> insertFunction) {
                 Object object = selectById(id);
                 if (object != null) {
                     return object;
                 }
+                return insertAndReturn(id, insertFunction);
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
+                Object object = selectById(id, tableSplitFieldValue);
+                if (object != null) {
+                    return object;
+                }
+                return insertAndReturn(id, insertFunction);
+            }
+
+            private Object insertAndReturn(Comparable id, Function<Comparable, Object> insertFunction) {
                 if (insertFunction == null) {
                     return null;
                 }
@@ -857,17 +1035,26 @@ public class TableOperatorFactory {
 
             @Override
             public void delete(Object object) {
-                Object id = getIdValueFromObject(classDesc, object);
+                Comparable id = getIdValueFromObject(classDesc, object);
                 int tableIndex = getTableIndex(classDesc, object, id);
-                String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
-                log.info(String.format("执行删除语句：%s, id:%s", deleteSql, id));
-                jdbcTemplate.update(deleteSql, id);
+                delete(id, tableIndex);
             }
 
             @Override
-            public void delete(Serializable id) {
-                int tableIndex = getTableIndex(classDesc, null, id);
+            public void delete(Comparable id) {
+                int tableIndex;
+                if (clazz.equals(id.getClass())) {
+                    Comparable realId = getIdValueFromObject(classDesc, id);
+                    tableIndex = getTableIndex(classDesc, id, realId);
+                } else {
+                    tableIndex = getTableIndex(classDesc, null, id);
+                }
+                delete(id, tableIndex);
+            }
+
+            private void delete(Comparable id, int tableIndex) {
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
+                log.info(String.format("执行删除语句：%s, id:%s", deleteSql, id));
                 jdbcTemplate.update(deleteSql, id);
             }
 
@@ -898,7 +1085,7 @@ public class TableOperatorFactory {
                                         Method setMethod = classDesc.getPropSetMethods().get(propName);
                                         setMethod.invoke(data, method.invoke(resultSet, columnName));
                                     }
-                                    return (T) data;
+                                    return data;
                                 } catch (Exception e) {
                                     throw new SscRuntimeException(e);
                                 }
@@ -910,8 +1097,20 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public Object selectById(Serializable id) {
+            public Object selectById(Comparable id) {
                 int tableIndex = getTableIndex(classDesc, null, id);
+                String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
+                try {
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查不到数据时会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
                 String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -928,6 +1127,23 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
                 String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
+                Object[] params = getConditionParams(classDesc, propNames, data);
+                try {
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sscTableInfo.getUniqueAndFieldSelectSqlMap().get(uniqueName)[tableIndex];
                 Object[] params = getConditionParams(classDesc, propNames, data);
                 try {
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
@@ -975,7 +1191,7 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 // 根据分表字段获取对应的表的索引
-                int tableIndex = getTableIndex(tableSplitFieldValue, tableSplitFieldValue, classDesc.getTableCount());
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
                 // 获取对应的sql
                 String sql = sscTableInfo.getSelectByTableSplitFieldSql()[tableIndex];
                 assert sql != null : new SscRuntimeException("未能找到对应表索引的sql, index: " + tableIndex);
@@ -987,96 +1203,27 @@ public class TableOperatorFactory {
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
-        });
+        };
     }
 
-    /*private Object[] getConditionParams(DataClassDesc classDesc, List<Pair<String, Object>> conditions) {
-        if (conditions == null || conditions.isEmpty()) {
-            return new Object[0];
-        }
-        int tableCount = classDesc.getTableCount();
-        List<Object> params = new ArrayList<>();
-        int index = 0;
-        for (Pair<String, Object> condition : conditions) {
-            Object value = condition.getValue();
-            if (value instanceof ValueIn) {
-                ValueIn<Object> valueIn = (ValueIn<Object>) value;
-                params.addAll(valueIn.getValues());
-                continue;
-            } else if (value instanceof ValueBetween) {
-                ValueBetween<Object> valueBetween = (ValueBetween<Object>) value;
-                params.add(valueBetween.getFirst());
-                params.add(valueBetween.getLast());
-                continue;
-            } else if ((value instanceof ValueIsNotNull) || (value instanceof ValueIsNull)) {
-                continue;
-            }
-            if (value instanceof SpecialValue) {
-                params.add(((SpecialValue) value).getValue());
-            } else {
-                params.add(value);
-            }
-        }
-        int size = params.size();
-        int leftParamSize = (tableCount - 1) * size;
-        for (int i = 0; i < leftParamSize; i++) {
-            params.add(params.get(index % size));
-            index++;
-        }
-        return params.toArray();
-    }*/
-
-    private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data) {
-        int size = propNames.size();
-        int tableCount = classDesc.getTableCount();
-        Object[] params = new Object[size * tableCount];
-        int index = 0;
-        for (String propName : propNames) {
-            params[index++] = getFieldValueFromObject(classDesc, propName, data);
-        }
-        int leftParamSize = (tableCount - 1) * size;
-        for (int i = 0; i < leftParamSize; i++) {
-            params[index] = params[index % size];
-            index++;
-        }
-        return params;
+    private <T> CompletelyOperator<T> getCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
+        return (CompletelyOperator<T>) userCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newCompletelyOperator(clazz, sscTableInfo));
     }
-
-    /**
-     * 将id设置到对象中去
-     */
-    private void setObjectId(Object object, Object id, DataClassDesc classDesc) {
-        Method idSetMethod = classDesc.getPropSetMethods().get(classDesc.getIdPropName());
-        try {
-            // 将新的id设置到对象中
-            idSetMethod.invoke(object, id);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new SscRuntimeException(e);
-        }
-    }
-
-    public <T> Operator<T> getOperator(Class<T> dataClass) {
-        if (globalConfig.getMaxInactiveTime() <= 0) {
-            return getNoCachedOperator(dataClass);
-        }
-        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
-        if (sscTableInfo == null) {
-            throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
-        }
-        return sscTableInfo.getClassDesc().isCached() ? (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+    private <T> CompletelyOperator<T> newCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
+        return new CompletelyOperator<T>() {
             private final DataClassDesc classDesc = sscTableInfo.getClassDesc();
 
             @Override
-            public void insert(Object object) {
+            public void insert(T object) {
                 if (!saveSwitch) {
                     // 存储缓存已关闭，直接插入数据库
-                    getNoCachedOperator(dataClass, sscTableInfo).insert((T) object);
+                    getNoCachedOperator(dataClass, sscTableInfo).insert(object);
                     return;
                 }
                 insertOrUpdate(getIdValueFromObject(classDesc, object), object);
             }
 
-            private void insertOrUpdate(Serializable id, Object object) {
+            private void insertOrUpdate(Comparable id, T object) {
                 if (object == null) {
                     log.warn("尝试添加为null的缓存，添加失败");
                     return;
@@ -1086,7 +1233,7 @@ public class TableOperatorFactory {
                     if (classDesc.isUseIdGeneratePolicy()) {
                         IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
                         // 根据id生成策略获取新的id
-                        id = (Serializable) idGeneratePolicy.getId(clazz);
+                        id = (Comparable) idGeneratePolicy.getId(dataClass);
                         setObjectId(object, id, classDesc);
                     } else {
                         id = getIdValueFromObject(classDesc, object);
@@ -1095,10 +1242,10 @@ public class TableOperatorFactory {
                 insertOrUpDateOrDelete(objectClass, id, object, CacheStatus.INSERT);
             }
 
-            private void insertOrUpDateOrDelete(Class<?> objectClass, Serializable id, Object object, CacheStatus newStatus) {
+            private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, T object, CacheStatus newStatus) {
                 if (CacheStatus.DELETE.equals(newStatus)) {
                     // 需要删除该数据
-                    Map<Serializable, ObjectInstanceCache> classMap = idCacheMap.get(objectClass);
+                    Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.get(objectClass);
                     if (classMap != null) {
                         ObjectInstanceCache cache = classMap.get(id);
                         if (cache != null) {
@@ -1110,7 +1257,7 @@ public class TableOperatorFactory {
                     }
                     return;
                 }
-                Map<Serializable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(objectClass, key -> new ConcurrentHashMap<>());
+                Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(objectClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.computeIfAbsent(id, key -> {
                     ObjectInstanceCache c = new ObjectInstanceCache();
                     c.setId(id);
@@ -1164,35 +1311,35 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public void update(Object object) {
+            public void update(T object) {
                 if (object == null) {
                     log.warn("尝试更新为null的缓存，更新失败");
                     return;
                 }
-                Serializable id = getIdValueFromObject(classDesc, object);
-                insertOrUpDateOrDelete(clazz, id, object, CacheStatus.UPDATE);
+                Comparable id = getIdValueFromObject(classDesc, object);
+                insertOrUpDateOrDelete(dataClass, id, object, CacheStatus.UPDATE);
             }
 
             @Override
-            public void delete(Object object) {
-                Serializable id = getIdValueFromObject(classDesc, object);
-                insertOrUpDateOrDelete(clazz, id, null, CacheStatus.AFTER_DELETE);
+            public void delete(T object) {
+                Comparable id = getIdValueFromObject(classDesc, object);
+                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
             }
 
             @Override
-            public void delete(Serializable id) {
-                insertOrUpDateOrDelete(clazz, id, null, CacheStatus.AFTER_DELETE);
+            public void delete(Comparable id) {
+                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
             }
 
             @Override
-            public Object selectById(Serializable id, Function<Serializable, Object> insertFunction) {
+            public T selectByIdNotNull(Comparable id, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, clazz)) {
+                        synchronized (SscStringUtils.getLock(id, dataClass)) {
                             value = noCachedOperator.selectById(id);
                             if (value == null && insertFunction != null) {
                                 value = insertFunction.apply(id);
@@ -1202,24 +1349,101 @@ public class TableOperatorFactory {
                             }
                         }
                     }
-                    return value;
+                    return (T) value;
                 }
-                Map<Serializable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>());
+                Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", clazz.getName(), id));
+                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
-                    Object value = noCachedOperator.selectById(id);
+                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
+                    T value = (T) noCachedOperator.selectById(id);
                     if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, clazz)) {
-                            value = noCachedOperator.selectById(id);
+                        synchronized (SscStringUtils.getLock(id, dataClass)) {
+                            value = (T) noCachedOperator.selectById(id);
                             if (value == null && insertFunction != null) {
                                 value = insertFunction.apply(id);
                                 if (value == null) {
-                                    insertOrUpDateOrDelete(clazz, id, null, CacheStatus.AFTER_DELETE);
+                                    insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
                                 } else {
-                                    insertOrUpDateOrDelete(clazz, id, value, CacheStatus.INSERT);
+                                    insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.INSERT);
+                                }
+                            }
+                        }
+                    }
+                    return value;
+                } else {
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
+                    if (cache.getCacheStatus().isDelete() && insertFunction != null) {
+                        synchronized (cache) {
+                            // 该数据原本需要删除
+                            if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
+                                T newInstance = (T) insertFunction.apply(id);
+                                cache.setObjectInstance(newInstance);
+                                // 预备删除，转为更新
+                                cache.setCacheStatus(CacheStatus.UPDATE);
+                                return newInstance;
+                            } else if (CacheStatus.AFTER_DELETE.equals(cache.getCacheStatus())) {
+                                // 已经删除了，这里需要插入
+                                T newInstance = (T) insertFunction.apply(id);
+                                cache.setObjectInstance(newInstance);
+                                cache.setCacheStatus(CacheStatus.INSERT);
+                                return newInstance;
+                            }
+                        }
+                    }
+                    T objectInstance = (T) cache.getObjectInstance();
+                    if (objectInstance == null && insertFunction != null) {
+                        // 这里可能永远不会运行
+                        synchronized (cache) {
+                            objectInstance = (T) cache.getObjectInstance();
+                            if (objectInstance == null) {
+                                objectInstance = insertFunction.apply(id);
+                                cache.setObjectInstance(objectInstance);
+                                cache.setCacheStatus(CacheStatus.INSERT);
+                            }
+                        }
+                    }
+                    return objectInstance;
+                }
+            }
+            @Override
+            public T selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, T> insertFunction) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    CompletelyOperator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
+                    Object value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                    if (value == null) {
+                        synchronized (SscStringUtils.getLock(id, dataClass)) {
+                            value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                            if (value == null && insertFunction != null) {
+                                value = insertFunction.apply(id);
+                                if (value != null) {
+                                    doInsert(noCachedOperator, value);
+                                }
+                            }
+                        }
+                    }
+                    return (T) value;
+                }
+                Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
+                ObjectInstanceCache cache = classMap.get(String.valueOf(id));
+                if (cache == null) {
+                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    // 缓存击穿，查询数据库
+                    CompletelyOperator<T> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
+                    T value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                    if (value == null) {
+                        synchronized (SscStringUtils.getLock(id, dataClass)) {
+                            value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                            if (value == null && insertFunction != null) {
+                                value = insertFunction.apply(id);
+                                if (value == null) {
+                                    insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
+                                } else {
+                                    insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.INSERT);
                                 }
                             }
                         }
@@ -1258,51 +1482,56 @@ public class TableOperatorFactory {
                             }
                         }
                     }
-                    return objectInstance;
+                    return (T) objectInstance;
                 }
             }
 
             @Override
-            public Object selectById(Serializable id) {
-                return selectById(id, null);
+            public T selectById(Comparable id) {
+                return selectByIdNotNull(id, null);
             }
 
             @Override
-            public Object selectByUniqueName(String uniqueName, Object data) {
+            public T selectById(Comparable id, Comparable tableSplitFieldValue) {
+                return selectByIdNotNull(id, tableSplitFieldValue, null);
+            }
+
+            @Override
+            public T selectByUniqueName(String uniqueName, Object data) {
                 Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
                 if (propNames == null) {
-                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                    throw new SscRuntimeException("There is no uniqueName in class: " + dataClass.getName());
                 }
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", clazz.getName(), uniqueName, data));
-                    return doSelectByUniqueName(getNoCachedOperator(clazz, sscTableInfo), uniqueName, data);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    return (T) doSelectByUniqueName(getNoCachedOperator(dataClass, sscTableInfo), uniqueName, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
                 if (uniqueValue == null) {
-                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", clazz.getName(), uniqueName, data));
+                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
                     return null;
                 }
-                Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(clazz, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
+                Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", clazz.getName(), uniqueName, data));
+                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(clazz, sscTableInfo);
-                    Object value = doSelectByUniqueName(noCachedOperator, uniqueName, data);
+                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
+                    T value = (T) doSelectByUniqueName(noCachedOperator, uniqueName, data);
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
-                        addUniqueFieldCacheObject(clazz, uniqueName, uniqueValue, CacheStatus.AFTER_DELETE, null);
+                        addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_DELETE, null);
                     } else {
-                        Serializable id = getIdValueFromObject(classDesc, value);
+                        Comparable id = getIdValueFromObject(classDesc, value);
                         if (id != null) {
                             // 添加id缓存(同时也会添加唯一键缓存)
-                            insertOrUpDateOrDelete(clazz, id, value, CacheStatus.AFTER_INSERT);
+                            insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.AFTER_INSERT);
                         } else {
                             // 没有id(一般不可能存在这种情况)
-                            addUniqueFieldCacheObject(clazz, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
+                            addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
                         }
                     }
                     return value;
@@ -1313,156 +1542,105 @@ public class TableOperatorFactory {
                     }
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
-                    return cache.getObjectInstance();
+                    return (T) cache.getObjectInstance();
                 }
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
-                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
-                /*if (!getSwitch) {
+            public T selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + dataClass.getName());
+                }
+                if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    return doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    return (T) doSelectByUniqueName(getNoCachedOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
                 }
 
-                String key = sscTableInfo.getKeyByConditionList(conditions);
-                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
-                    // 不使用缓存
-                    return doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
+                Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
+                if (uniqueValue == null) {
+                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    return null;
                 }
-                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
-                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
-                Object uniqueValue = getUniqueValueByMap(conditions);
-                ObjectListCache cache = cacheMap.get(uniqueValue);
+                Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
+                ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
+                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
-                    List<Object> dataList = doSelectCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                    // 放入缓存
-                    ObjectListCache objectListCache = new ObjectListCache();
-                    if (dataList != null) {
-                        ArrayList<Serializable> idList = new ArrayList<>(dataList.size());
-                        for (Object data : dataList) {
-                            Serializable idValue = getIdValueFromObject(classDesc, data);
-                            if (idValue == null) {
-                                continue;
-                            }
-                            idList.add(idValue);
-                            // 添加id缓存
-                            insertOrUpDateOrDelete(clazz, idValue, data, CacheStatus.AFTER_INSERT);
+                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
+                    T value = (T) doSelectByUniqueName(noCachedOperator, uniqueName, tableSplitFieldValue, data);
+                    // 如果没有id，无法放入缓存
+                    if (value == null) {
+                        // 防止击穿
+                        addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_DELETE, null);
+                    } else {
+                        Comparable id = getIdValueFromObject(classDesc, value);
+                        if (id != null) {
+                            // 添加id缓存(同时也会添加唯一键缓存)
+                            insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.AFTER_INSERT);
+                        } else {
+                            // 没有id(一般不可能存在这种情况)
+                            addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
                         }
-                        objectListCache.setIdList(idList);
                     }
-                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
-                    long now = System.currentTimeMillis();
-                    objectListCache.setLastUseTime(now);
-                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
-                    return dataList;
+                    return value;
                 } else {
                     if (cache.getCacheStatus().isDelete()) {
                         // 该对象需要删除或已被删除
                         return null;
                     }
-                    // 更新最后一次使用时间(不设置，到时间就删除)
-                    //cache.setLastUseTime(System.currentTimeMillis());
-                    List<Serializable> idList = cache.getIdList();
-                    if (idList == null || idList.isEmpty()) {
-                        return Collections.emptyList();
-                    }
-                    List<Object> dataList = new ArrayList<>();
-                    for (Serializable idValue : idList) {
-                        // 根据id去查询对应的数据
-                        Object data = selectById(idValue);
-                        if (data == null) {
-                            continue;
-                        }
-                        dataList.add(data);
-                    }
-                    return dataList;
-                }*/
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
+                    return (T) cache.getObjectInstance();
+                }
+            }
+
+            @Override
+            public List<T> selectByCondition(List<Pair<String, Object>> conditions) {
+                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
             @Override
             public int countByCondition(List<Pair<String, Object>> conditions) {
                 return getNoCachedOperator(dataClass, sscTableInfo).countByCondition(conditions);
-                /*if (!getSwitch) {
-                    // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    return doCountByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                }
-                String key = sscTableInfo.getKeyByConditionList(conditions);
-                if (!sscTableInfo.getSelectByConditionSql().containsKey(key)) {
-                    // 不使用缓存
-                    return doCountByCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                }
-                Map<Object, ObjectListCache> cacheMap = conditionCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>())
-                        .computeIfAbsent(key, k2 -> new ConcurrentHashMap<>());
-                Object uniqueValue = getUniqueValueByMap(conditions);
-                ObjectListCache cache = cacheMap.get(uniqueValue);
-                if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByCondition)，直接查询数据库, class:%s, value:%s", clazz.getName(), conditions));
-                    // 缓存击穿，查询数据库，所有id
-                    List<Serializable> idList = doSelectByIdCondition(getNoCachedOperator(clazz, sscTableInfo), conditions);
-                    // 放入缓存
-                    ObjectListCache objectListCache = new ObjectListCache();
-                    if (idList == null) {
-                        objectListCache.setIdList(Collections.emptyList());
-                    } else {
-                        objectListCache.setIdList(idList);
-                    }
-                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
-                    long now = System.currentTimeMillis();
-                    objectListCache.setLastUseTime(now);
-                    cacheMap.putIfAbsent(getUniqueValueByMap(conditions), objectListCache);
-                    return idList.size();
-                } else {
-                    if (cache.getCacheStatus().isDelete()) {
-                        // 该对象需要删除或已被删除
-                        return 0;
-                    }
-                    // 更新最后一次使用时间(不设置，到时间就删除)
-                    //cache.setLastUseTime(System.currentTimeMillis());
-                    List<Serializable> idList = cache.getIdList();
-                    return idList == null ? 0 : idList.size();
-                }*/
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <A> List<A> selectIdByCondition(List<Pair<String, Object>> conditions) {
                 return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
-            private List<Serializable> getIdListFromDb(Comparable tableSplitFieldValue) {
-                ArrayList<Serializable> idList = new ArrayList<>();
-                List<Object> dataList = (List<Object>) getNoCachedOperator(clazz, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
+            private List<Comparable> getIdListFromDb(Comparable tableSplitFieldValue) {
+                ArrayList<Comparable> idList = new ArrayList<>();
+                List<T> dataList = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
                 if (dataList != null) {
-                    for (Object data : dataList) {
-                        Serializable idValue = getIdValueFromObject(classDesc, data);
+                    for (T data : dataList) {
+                        Comparable idValue = getIdValueFromObject(classDesc, data);
                         if (idValue == null) {
                             continue;
                         }
                         idList.add(idValue);
                         // 添加id缓存
-                        insertOrUpDateOrDelete(clazz, idValue, data, CacheStatus.AFTER_INSERT);
+                        insertOrUpDateOrDelete(dataClass, idValue, data, CacheStatus.AFTER_INSERT);
                     }
                 }
                 return idList;
             }
 
             @Override
-            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+            public List<T> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", clazz.getName(), tableSplitFieldValue));
-                    return (List<Object>) getNoCachedOperator(clazz, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
+                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
                 }
-                Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(clazz, k1 -> new ConcurrentHashMap<>());
+                Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
                 ObjectListCache cache = cacheMap.computeIfAbsent(tableSplitFieldValue, k2 -> {
-                    log.info(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", clazz.getName(), tableSplitFieldValue));
+                    log.info(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
                     ObjectListCache objectListCache = new ObjectListCache();
                     // 缓存击穿，查询数据库
-                    List<Serializable> idList = getIdListFromDb(tableSplitFieldValue);
+                    List<Comparable> idList = getIdListFromDb(tableSplitFieldValue);
                     objectListCache.setIdList(Collections.synchronizedList(idList));
                     // 这里不是作为缓存的状态，而是作为一个标记，标记为已查询过数据库
                     objectListCache.setCacheStatus(CacheStatus.AFTER_UPDATE);
@@ -1471,7 +1649,7 @@ public class TableOperatorFactory {
                 });
                 if (CacheStatus.AFTER_INSERT.equals(cache.getCacheStatus())) {
                     // 没有查询过数据库，查询一下
-                    List<Serializable> idList = getIdListFromDb(tableSplitFieldValue);
+                    List<Comparable> idList = getIdListFromDb(tableSplitFieldValue);
                     synchronized (cache) {
                         cache.getIdList().addAll(idList);
                         // 标记为已查询过数据库
@@ -1479,11 +1657,11 @@ public class TableOperatorFactory {
                     }
                 }
                 cache.setLastUseTime(System.currentTimeMillis());
-                List<Serializable> idList = cache.getIdList();
-                List<Object> dataList = new ArrayList<>(idList.size());
-                for (Serializable idValue : idList) {
+                List<Comparable> idList = cache.getIdList();
+                List<T> dataList = new ArrayList<>(idList.size());
+                for (Comparable idValue : idList) {
                     // 根据id去查询对应的数据
-                    Object data = selectById(idValue);
+                    T data = selectById(idValue);
                     if (data == null) {
                         continue;
                     }
@@ -1496,10 +1674,150 @@ public class TableOperatorFactory {
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
+        };
+    }
+
+    public <T> Operator<T> getOperator(Class<T> dataClass) {
+        if (globalConfig.getMaxInactiveTime() <= 0) {
+            return getNoCachedOperator(dataClass);
+        }
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        if (sscTableInfo == null) {
+            throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
+        }
+        return sscTableInfo.getClassDesc().isCached() ? (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
+            private CompletelyOperator<Object> completelyOperator = getCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+            @Override
+            public void delete(Comparable id) {
+                completelyOperator.delete(id);
+            }
+
+            @Override
+            public Object selectById(Comparable id) {
+                return completelyOperator.selectById(id);
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Function<Comparable, Object> insertFunction) {
+                return completelyOperator.selectByIdNotNull(id, insertFunction);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Object o) {
+                return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public void insert(Object o) {
+                completelyOperator.insert(o);
+            }
+
+            @Override
+            public void update(Object o) {
+                completelyOperator.update(o);
+            }
+
+            @Override
+            public void delete(Object o) {
+                completelyOperator.delete(o);
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectByCondition(conditions);
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectIdByCondition(conditions);
+            }
+
+            @Override
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.countByCondition(conditions);
+            }
+
+            @Override
+            public JdbcTemplate getJdbcTemplate() {
+                return completelyOperator.getJdbcTemplate();
+            }
         }) : getNoCachedOperator(dataClass, sscTableInfo);
     }
 
-    private void addTableSplitFieldCache(DataClassDesc classDesc, Object object, Serializable id) {
+    /**
+     * 当分表字段自定义时，使用此方法
+     * @param dataClass 数据类
+     * @return 操作类
+     */
+    public <T> SpecialOperator<T> getSpecialOperator(Class<T> dataClass) {
+        if (globalConfig.getMaxInactiveTime() <= 0) {
+            return getNoCachedSpecialOperator(dataClass);
+        }
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        if (sscTableInfo == null) {
+            throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
+        }
+        return sscTableInfo.getClassDesc().isCached() ? (SpecialOperator<T>) userSpecialOperatorMap.computeIfAbsent(dataClass, clazz -> new SpecialOperator<Object>() {
+            private CompletelyOperator<Object> completelyOperator = getCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+
+            @Override
+            public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
+                return completelyOperator.selectById(id, tableSplitFieldValue);
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
+                return completelyOperator.selectByIdNotNull(id, tableSplitFieldValue, insertFunction);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object o) {
+                return completelyOperator.selectByUniqueName(uniqueName, tableSplitFieldValue, o);
+            }
+
+            @Override
+            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+                return completelyOperator.selectByTableSplitField(tableSplitFieldValue);
+            }
+
+            @Override
+            public void insert(Object o) {
+                completelyOperator.insert(o);
+            }
+
+            @Override
+            public void update(Object o) {
+                completelyOperator.update(o);
+            }
+
+            @Override
+            public void delete(Object o) {
+                completelyOperator.delete(o);
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectByCondition(conditions);
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.selectIdByCondition(conditions);
+            }
+
+            @Override
+            public int countByCondition(List<Pair<String, Object>> conditions) {
+                return completelyOperator.countByCondition(conditions);
+            }
+
+            @Override
+            public JdbcTemplate getJdbcTemplate() {
+                return completelyOperator.getJdbcTemplate();
+            }
+        }) : getNoCachedSpecialOperator(dataClass, sscTableInfo);
+    }
+
+    private void addTableSplitFieldCache(DataClassDesc classDesc, Object object, Comparable id) {
         String tableSplitField = classDesc.getTableSplitField();
         if (tableSplitField == null) {
             return;
@@ -1699,6 +2017,17 @@ public class TableOperatorFactory {
         }
     }*/
 
+    private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Comparable tableSplitFieldValue, Object data) {
+        try {
+            Class<? extends Operator> operatorClass = operator.getClass();
+            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
+            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Comparable.class, genericType);
+            return insertMethod.invoke(operator, uniqueName, tableSplitFieldValue, data);
+        } catch (Exception e) {
+            throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
+        }
+    }
+
     private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
@@ -1752,10 +2081,10 @@ public class TableOperatorFactory {
         }
     }
 
-    private Serializable getIdValueFromObject(DataClassDesc classDesc, Object object) {
+    private Comparable getIdValueFromObject(DataClassDesc classDesc, Object object) {
         Method idGetMethod = classDesc.getPropGetMethods().get(classDesc.getIdPropName());
         try {
-            return (Serializable) idGetMethod.invoke(object);
+            return (Comparable) idGetMethod.invoke(object);
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new SscRuntimeException("Get id value error in class: " + classDesc.getDataClass().getName(), e);
         }
@@ -1827,14 +2156,17 @@ public class TableOperatorFactory {
                     assert  tableSplitFieldValue != null : new SscRuntimeException(String.format("插入数据失败，分表字段：%s 值为null, class: %s", tableSplitField, object.getClass().getName()));
                 }
             }
-            return getTableIndex((Comparable) tableSplitFieldValue, tableSplitFieldValue, tableCount);
+            return getTableIndex((Comparable) tableSplitFieldValue, tableCount);
         }
     }
 
-    private int getTableIndex(Comparable comparableId, Object tableSplitFieldValue, int tableCount) {
+    private int getTableIndex(Comparable comparableId, int tableCount) {
+        if (tableCount == 1) {
+            return 0;
+        }
         // 根据id获取表的索引
-        TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(tableSplitFieldValue.getClass()).floorEntry(comparableId).getValue();
-        assert policy != null : new SscRuntimeException(String.format("字段类型:%s, 字段值:%s，未能找到对应的分表策略", tableSplitFieldValue.getClass(), tableSplitFieldValue));
+        TableSplitPolicy<? extends Comparable> policy = globalConfig.getTableSplitPolicyMap().get(comparableId.getClass()).floorEntry(comparableId).getValue();
+        assert policy != null : new SscRuntimeException(String.format("字段类型:%s, 字段值:%s，未能找到对应的分表策略", comparableId.getClass(), comparableId));
         try {
             Method method = policy.getClass().getMethod("getTableIndex", comparableId.getClass(), int.class);
             return (int) method.invoke(policy, comparableId, tableCount);

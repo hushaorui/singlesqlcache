@@ -2,11 +2,9 @@ package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.common.em.CacheStatus;
 
-import java.io.Serializable;
-
 class CommonCache {
     /** 在数据库中的id(分表的数据对象id会重复) */
-    private Serializable id;
+    private Comparable id;
     /** 所属对象 */
     private Class<?> objectClass;
     /** 最后一次更新时间，也用来标记是否进行过初始化 */
@@ -16,11 +14,11 @@ class CommonCache {
     /** 缓存的状态 */
     private CacheStatus cacheStatus;
 
-    public Serializable getId() {
+    public Comparable getId() {
         return id;
     }
 
-    public void setId(Serializable id) {
+    public void setId(Comparable id) {
         this.id = id;
     }
 
