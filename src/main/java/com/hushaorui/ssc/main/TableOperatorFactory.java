@@ -866,7 +866,7 @@ public class TableOperatorFactory {
 
             @Override
             public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
-                return (List<T>) completelyOperator.selectByCondition(conditions);
+                return (List<T>) completelyOperator.selectIdByCondition(conditions);
             }
 
             @Override
@@ -1622,7 +1622,7 @@ public class TableOperatorFactory {
 
             @Override
             public List<T> selectByCondition(List<Pair<String, Object>> conditions) {
-                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByCondition(conditions);
             }
 
             @Override

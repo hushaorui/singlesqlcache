@@ -6,8 +6,10 @@ import com.hushaorui.ssc.common.data.ColumnMetaData;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.main.Operator;
+import com.hushaorui.ssc.main.SpecialOperator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.param.*;
+import com.hushaorui.ssc.test.common.TestMiniGame;
 import com.hushaorui.ssc.test.common.TestPlayer;
 import javafx.util.Pair;
 import org.junit.Before;
@@ -417,6 +419,30 @@ public class TableOperatorFactoryTest {
             }
             result.setByteData("haha".getBytes(StandardCharsets.UTF_8.name()));
             operator.update(result);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_tableCount_1_insert() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            TestMiniGame testMiniGame = new TestMiniGame();
+            testMiniGame.setUserId(100L);
+            testMiniGame.setData("data1");
+            operator.insert(testMiniGame);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_tableCount_1_limit() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            List<TestMiniGame> testMiniGames = operator.selectByCondition(new Pair<>("", new ValueFirstResult(0)), new Pair<>("", new ValueMaxResult(1)));
+            System.out.println(JSONArray.toJSONString(testMiniGames));
         } catch (Exception e) {
             e.printStackTrace();
         }
