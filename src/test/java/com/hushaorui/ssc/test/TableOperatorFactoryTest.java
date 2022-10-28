@@ -1,6 +1,7 @@
 package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.fastjson.JSONArray;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
@@ -380,6 +381,23 @@ public class TableOperatorFactoryTest {
             testPlayer.setUserId(100L);
             Object object = testPlayer;
             operator.delete(object);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_updateUniqueName() {
+        try {
+            Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+            TestPlayer testPlayer = new TestPlayer();
+            testPlayer.setUsername("张三1");
+            TestPlayer result = operator.selectByUniqueName("username", testPlayer);
+            System.out.println(JSONArray.toJSONString(result));
+            result.setUsername("张三111");
+            operator.update(result);
+            result = operator.selectByUniqueName("username", testPlayer);
+            System.out.println("第二次查找：" + JSONArray.toJSONString(result));
         } catch (Exception e) {
             e.printStackTrace();
         }

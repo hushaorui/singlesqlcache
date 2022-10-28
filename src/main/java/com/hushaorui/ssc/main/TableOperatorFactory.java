@@ -620,6 +620,10 @@ public class TableOperatorFactory {
             if (! propColumnMapping.containsKey(fieldName)) {
                 throw new SscRuntimeException("未知的数据库分表字段名：" + fieldName);
             }
+            // 分表字段是不能更新的
+            notUpdateProps.add(fieldName);
+            // 分表字段的值也不能为null
+            notNullProps.add(fieldName);
             dataClassDesc.setTableSplitField(fieldName);
         }
         dataClassDesc.setTableName(tableName);
@@ -965,10 +969,10 @@ public class TableOperatorFactory {
         }
     }
     private <T> CompletelyOperator<T> getNoCachedCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
-        return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newCompletelyOperator(clazz, sscTableInfo));
+        return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newNoCachedCompletelyOperator(clazz, sscTableInfo));
     }
 
-    private <T> CompletelyOperator<T> newNoCachedCompletelyOperator(Class<Object> clazz, SscTableInfo sscTableInfo) {
+    private <T> CompletelyOperator<T> newNoCachedCompletelyOperator(Class<T> clazz, SscTableInfo sscTableInfo) {
         return (CompletelyOperator<T>) new CompletelyOperator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
             private RowMapper<Object> rowMapper;
@@ -1217,7 +1221,7 @@ public class TableOperatorFactory {
             public void insert(T object) {
                 if (!saveSwitch) {
                     // 存储缓存已关闭，直接插入数据库
-                    getNoCachedOperator(dataClass, sscTableInfo).insert(object);
+                    getNoCachedCompletelyOperator(dataClass, sscTableInfo).insert(object);
                     return;
                 }
                 insertOrUpdate(getIdValueFromObject(classDesc, object), object);
@@ -1336,7 +1340,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
-                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
+                    Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
                         synchronized (SscStringUtils.getLock(id, dataClass)) {
@@ -1356,7 +1360,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
+                    Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     T value = (T) noCachedOperator.selectById(id);
                     if (value == null) {
                         synchronized (SscStringUtils.getLock(id, dataClass)) {
@@ -1379,14 +1383,14 @@ public class TableOperatorFactory {
                         synchronized (cache) {
                             // 该数据原本需要删除
                             if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
-                                T newInstance = (T) insertFunction.apply(id);
+                                T newInstance = insertFunction.apply(id);
                                 cache.setObjectInstance(newInstance);
                                 // 预备删除，转为更新
                                 cache.setCacheStatus(CacheStatus.UPDATE);
                                 return newInstance;
                             } else if (CacheStatus.AFTER_DELETE.equals(cache.getCacheStatus())) {
                                 // 已经删除了，这里需要插入
-                                T newInstance = (T) insertFunction.apply(id);
+                                T newInstance = insertFunction.apply(id);
                                 cache.setObjectInstance(newInstance);
                                 cache.setCacheStatus(CacheStatus.INSERT);
                                 return newInstance;
@@ -1505,7 +1509,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
-                    return (T) doSelectByUniqueName(getNoCachedOperator(dataClass, sscTableInfo), uniqueName, data);
+                    return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
@@ -1518,8 +1522,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
-                    T value = (T) doSelectByUniqueName(noCachedOperator, uniqueName, data);
+                    T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
@@ -1536,13 +1539,23 @@ public class TableOperatorFactory {
                     }
                     return value;
                 } else {
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
                     if (cache.getCacheStatus().isDelete()) {
                         // 该对象需要删除或已被删除
                         return null;
                     }
-                    // 更新最后一次使用时间
-                    cache.setLastUseTime(System.currentTimeMillis());
-                    return (T) cache.getObjectInstance();
+                    Object objectInstance = cache.getObjectInstance();
+                    if (objectInstance == null) {
+                        return null;
+                    } else {
+                        // 再次计算唯一值，如果不相匹配，则该唯一键的值经过了修改，相当于被删除了
+                        Object uniqueValueCheck = getUniqueValueByUniqueName(classDesc, propNames, objectInstance);
+                        if (! uniqueValue.equals(uniqueValueCheck)) {
+                            return null;
+                        }
+                    }
+                    return (T) objectInstance;
                 }
             }
 
@@ -1555,7 +1568,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
-                    return (T) doSelectByUniqueName(getNoCachedOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
+                    return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
@@ -1568,8 +1581,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
-                    Operator<?> noCachedOperator = getNoCachedOperator(dataClass, sscTableInfo);
-                    T value = (T) doSelectByUniqueName(noCachedOperator, uniqueName, tableSplitFieldValue, data);
+                    T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
@@ -1586,29 +1598,39 @@ public class TableOperatorFactory {
                     }
                     return value;
                 } else {
+                    // 更新最后一次使用时间
+                    cache.setLastUseTime(System.currentTimeMillis());
                     if (cache.getCacheStatus().isDelete()) {
                         // 该对象需要删除或已被删除
                         return null;
                     }
-                    // 更新最后一次使用时间
-                    cache.setLastUseTime(System.currentTimeMillis());
-                    return (T) cache.getObjectInstance();
+                    Object objectInstance = cache.getObjectInstance();
+                    if (objectInstance == null) {
+                        return null;
+                    } else {
+                        // 再次计算唯一值，如果不相匹配，则该唯一键的值经过了修改，相当于被删除了
+                        Object uniqueValueCheck = getUniqueValueByUniqueName(classDesc, propNames, objectInstance);
+                        if (! uniqueValue.equals(uniqueValueCheck)) {
+                            return null;
+                        }
+                    }
+                    return (T) objectInstance;
                 }
             }
 
             @Override
             public List<T> selectByCondition(List<Pair<String, Object>> conditions) {
-                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
             @Override
             public int countByCondition(List<Pair<String, Object>> conditions) {
-                return getNoCachedOperator(dataClass, sscTableInfo).countByCondition(conditions);
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).countByCondition(conditions);
             }
 
             @Override
             public <A> List<A> selectIdByCondition(List<Pair<String, Object>> conditions) {
-                return getNoCachedOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
             private List<Comparable> getIdListFromDb(Comparable tableSplitFieldValue) {
@@ -1872,7 +1894,7 @@ public class TableOperatorFactory {
      * @param uniqueName  唯一键的名称
      * @param uniqueValue 唯一键计算后的值
      */
-    private void addUniqueFieldCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue, CacheStatus cacheStatus, Object data) {
+    private ObjectInstanceCache addUniqueFieldCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue, CacheStatus cacheStatus, Object data) {
         Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(objectClass, key2 -> new ConcurrentHashMap<>())
                 .computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
         ObjectInstanceCache cache = new ObjectInstanceCache();
@@ -1880,7 +1902,7 @@ public class TableOperatorFactory {
         cache.setObjectInstance(data);
         long now = System.currentTimeMillis();
         cache.setLastUseTime(now);
-        uniqueMap.putIfAbsent(uniqueValue, cache);
+        return uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
     /*private Object getUniqueValueByMap(List<Pair<String, Object>> conditions) {
@@ -2020,8 +2042,7 @@ public class TableOperatorFactory {
     private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Comparable tableSplitFieldValue, Object data) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
-            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
-            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Comparable.class, genericType);
+            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Comparable.class, Object.class);
             return insertMethod.invoke(operator, uniqueName, tableSplitFieldValue, data);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
@@ -2031,8 +2052,7 @@ public class TableOperatorFactory {
     private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
-            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
-            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, genericType);
+            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Object.class);
             return insertMethod.invoke(operator, uniqueName, data);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
@@ -2042,8 +2062,7 @@ public class TableOperatorFactory {
     private void doUpdate(Operator<?> operator, Object value) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
-            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
-            Method insertMethod = operatorClass.getMethod("update", genericType);
+            Method insertMethod = operatorClass.getMethod("update", Object.class);
             insertMethod.invoke(operator, value);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("Update error! operator class: %s, value: %s", operator.getClass().getName(), value), e);
@@ -2053,8 +2072,7 @@ public class TableOperatorFactory {
     private void doInsert(Operator<?> operator, Object value) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
-            Class<? extends Operator> genericType = SscStringUtils.getGenericType(operatorClass, 0);
-            Method insertMethod = operatorClass.getMethod("insert", genericType);
+            Method insertMethod = operatorClass.getMethod("insert", Object.class);
             insertMethod.invoke(operator, value);
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), value), e);

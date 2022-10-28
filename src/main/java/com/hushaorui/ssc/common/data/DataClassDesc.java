@@ -178,6 +178,11 @@ public class DataClassDesc extends CommonClassDesc {
         Set<String> ignoreProps = new HashSet<>();
         Set<String> notNullProps = new HashSet<>();
         Set<String> notUpdateProps = new HashSet<>();
+        if (classDesc.tableSplitField != null) {
+            // 分表字段不能为null，也不能更新
+            notNullProps.add(classDesc.getTableSplitField());
+            notUpdateProps.add(classDesc.getTableSplitField());
+        }
         Map<String, SscField> fieldMap = data.fieldMap;
         if (fieldMap != null) {
             fieldMap.forEach((propName, field) -> {
