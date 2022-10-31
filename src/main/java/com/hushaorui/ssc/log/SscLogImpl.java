@@ -11,6 +11,7 @@ public class SscLogImpl implements SscLog {
     }
     public SscLogImpl(Class<?> clazz, SscLogLevel logLevel) {
         this.className = clazz.getName();
+        this.logLevel = logLevel;
     }
     public enum SscLogLevel {
         DEBUG("DEBUG"),
