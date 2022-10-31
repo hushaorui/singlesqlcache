@@ -14,7 +14,6 @@ import javafx.util.Pair;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.lang.reflect.*;
@@ -97,15 +96,20 @@ public class TableOperatorFactory {
         if (classesDescFilePath != null) {
             InputStream inputStream = TableOperatorFactory.class.getClassLoader().getResourceAsStream(classesDescFilePath);
             if (inputStream != null) {
+                org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
                 try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
                     byte[] bytes = new byte[bufferedInputStream.available()];
                     bufferedInputStream.read(bytes);
                     String data = new String(bytes, StandardCharsets.UTF_8);
-                    SscDataConfigOfYaml configOfYaml = new Yaml().loadAs(data, SscDataConfigOfYaml.class);
+                    SscDataConfigOfYaml configOfYaml = yaml.loadAs(data, SscDataConfigOfYaml.class);
                     Map<String, SscData> classes = configOfYaml.classes;
                     classes.forEach(this::createTableInfo);
-                } catch (IOException e) {
-                    log.error(String.format("读取%s文件失败", globalConfig.getClassesDescFilePath()), e);
+                } catch (Throwable e) {
+                    if (e instanceof NoClassDefFoundError) {
+                        log.warn("No class: org.yaml.snakeyaml.Yaml");
+                    } else {
+                        log.error(String.format("读取%s文件失败", globalConfig.getClassesDescFilePath()), e);
+                    }
                 }
             }
         }
@@ -118,7 +122,7 @@ public class TableOperatorFactory {
             timer.schedule(timerTask = getTimerTask(), persistenceIntervalTime, persistenceIntervalTime);
             saveSwitch = true;
             getSwitch = true;
-            log.info(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime()));
+            log.debug(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime()));
             if (globalConfig.isAddShutdownHook()) {
                 // 程序关闭前执行
                 Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
@@ -130,7 +134,7 @@ public class TableOperatorFactory {
     }
 
     private void beforeShutdown() {
-        log.info("程序关闭前执行");
+        log.debug("程序关闭前执行");
         close();
     }
 
@@ -150,7 +154,7 @@ public class TableOperatorFactory {
         return new TimerTask() {
             @Override
             public void run() {
-                log.info(String.format("%s 定时任务执行开始", name));
+                log.debug(String.format("%s 定时任务执行开始", name));
                 final long now = System.currentTimeMillis();
                 try {
                     idCacheMap.forEach((objectClass, value) -> value.entrySet().removeIf(cacheEntry -> {
@@ -214,7 +218,7 @@ public class TableOperatorFactory {
                         // 清理超过最大闲置时间的缓存数据
                         boolean remove = cache.getLastUseTime() + globalConfig.getMaxInactiveTime() < now;
                         if (remove) {
-                            log.info(String.format("因长时间未使用，删除缓存, class:%s, id:%s", objectClass.getName(), cacheEntry.getKey()));
+                            log.debug(String.format("因长时间未使用，删除缓存, class:%s, id:%s", objectClass.getName(), cacheEntry.getKey()));
                         }
                         return remove;
                     }));
@@ -226,7 +230,7 @@ public class TableOperatorFactory {
                                 long lastUseTime = entry.getValue().getLastUseTime();
                                 boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.info(String.format("因长时间未使用，删除(unique)缓存, class:%s,uniqueName:%s,uniqueValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.debug(String.format("因长时间未使用，删除(unique)缓存, class:%s,uniqueName:%s,uniqueValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
                                 }
                                 return delete;
                             });
@@ -242,7 +246,7 @@ public class TableOperatorFactory {
                                 long lastUseTime = objectListCache.getLastUseTime();
                                 boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.info(String.format("因长时间未使用，删除(tableSplitField)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.debug(String.format("因长时间未使用，删除(tableSplitField)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
                                 }
                                 return delete;
                             });
@@ -253,7 +257,7 @@ public class TableOperatorFactory {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.info(String.format("%s 定时任务执行结束", name));
+                log.debug(String.format("%s 定时任务执行结束", name));
             }
         };
     }
@@ -706,7 +710,7 @@ public class TableOperatorFactory {
                 }
                 maxId++;
                 policy.map.put(clazz, new AtomicInteger(maxId));
-                log.info(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
+                log.debug(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
             } else {
                 Map<Class<?>, AtomicLong> map;
                 if (idGeneratePolicy instanceof DefaultLongIdGeneratePolicy) {
@@ -728,10 +732,10 @@ public class TableOperatorFactory {
                     }
                     maxId++;
                     map.put(clazz, new AtomicLong(maxId));
-                    log.info(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
+                    log.debug(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
                 }
             }
-            log.info(String.format("class: %s 数据类注册成功", clazz.getName()));
+            log.debug(String.format("class: %s 数据类注册成功", clazz.getName()));
             return sscTableInfo;
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
             log.error("创建TableInfo失败", e);
@@ -750,7 +754,7 @@ public class TableOperatorFactory {
         for (String sql : dropTableSql) {
             try {
                 jdbcTemplate.execute(sql);
-                log.info("删除表, sql: " + sql);
+                log.debug("删除表, sql: " + sql);
             } catch (Exception e) {
                 if (! e.getMessage().contains("does not exist")) {
                     log.error("删除表失败", e);
@@ -763,7 +767,7 @@ public class TableOperatorFactory {
         for (String sql : createTableSql) {
             try {
                 jdbcTemplate.execute(sql);
-                log.info("尝试创建表, sql: " + sql);
+                log.debug("尝试创建表, sql: " + sql);
             } catch (Exception e) {
                 if (! e.getMessage().contains("already exist")) {
                     log.error("尝试创建表失败", e);
@@ -993,7 +997,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(classDesc, object, id);
                 String insertSql = sscTableInfo.getInsertSql()[tableIndex];
                 Object[] params = getInsertParamArrayFromObject(classDesc, object);
-                log.info(String.format("执行插入语句：%s, id:%s", insertSql, id));
+                log.debug(String.format("执行插入语句：%s, id:%s", insertSql, id));
                 jdbcTemplate.update(insertSql, params);
             }
 
@@ -1033,7 +1037,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(classDesc, object, id);
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
                 Object[] params = getUpdateParamArrayFromObject(classDesc, object);
-                log.info(String.format("执行更新语句：%s, id:%s", updateSql, id));
+                log.debug(String.format("执行更新语句：%s, id:%s", updateSql, id));
                 jdbcTemplate.update(updateSql, params);
             }
 
@@ -1058,7 +1062,7 @@ public class TableOperatorFactory {
 
             private void delete(Comparable id, int tableIndex) {
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
-                log.info(String.format("执行删除语句：%s, id:%s", deleteSql, id));
+                log.debug(String.format("执行删除语句：%s, id:%s", deleteSql, id));
                 jdbcTemplate.update(deleteSql, id);
             }
 
@@ -1257,7 +1261,7 @@ public class TableOperatorFactory {
                         if (cache != null) {
                             synchronized (cache) {
                                 cache.setCacheStatus(newStatus);
-                                log.info(String.format("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object));
+                                log.debug(String.format("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object));
                             }
                         }
                     }
@@ -1313,7 +1317,7 @@ public class TableOperatorFactory {
                     cache.setLastModifyTime(now);
                     cache.setLastUseTime(now);
                 }
-                log.info(String.format("%s缓存, class:%s, id: %s", cache.getCacheStatus(), objectClass.getName(), id));
+                log.debug(String.format("%s缓存, class:%s, id: %s", cache.getCacheStatus(), objectClass.getName(), id));
             }
 
             @Override
@@ -1341,7 +1345,7 @@ public class TableOperatorFactory {
             public T selectByIdNotNull(Comparable id, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
@@ -1360,7 +1364,7 @@ public class TableOperatorFactory {
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     T value = (T) noCachedOperator.selectById(id);
@@ -1418,7 +1422,7 @@ public class TableOperatorFactory {
             public T selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     CompletelyOperator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id, tableSplitFieldValue);
                     if (value == null) {
@@ -1437,7 +1441,7 @@ public class TableOperatorFactory {
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
                     // 缓存击穿，查询数据库
                     CompletelyOperator<T> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     T value = noCachedOperator.selectById(id, tableSplitFieldValue);
@@ -1510,7 +1514,7 @@ public class TableOperatorFactory {
                 }
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
                     return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                 }
 
@@ -1522,7 +1526,7 @@ public class TableOperatorFactory {
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
+                    log.debug(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
                     T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
@@ -1569,7 +1573,7 @@ public class TableOperatorFactory {
                 }
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
                     return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
                 }
 
@@ -1581,7 +1585,7 @@ public class TableOperatorFactory {
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.info(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
+                    log.debug(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
                     // 缓存击穿，查询数据库
                     T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
@@ -1656,12 +1660,12 @@ public class TableOperatorFactory {
             public List<T> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.info(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
+                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
                     return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
                 }
                 Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
                 ObjectListCache cache = cacheMap.computeIfAbsent(tableSplitFieldValue, k2 -> {
-                    log.info(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
+                    log.debug(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
                     ObjectListCache objectListCache = new ObjectListCache();
                     // 缓存击穿，查询数据库
                     List<Comparable> idList = getIdListFromDb(tableSplitFieldValue);
@@ -2208,9 +2212,9 @@ public class TableOperatorFactory {
             if (!file.exists()) {
                 file.createNewFile();
             }
-            String dump = new Yaml().dumpAsMap(configOfYaml);
-            //String dump = new Yaml().dumpAll(classes.entrySet().iterator());
-            //String dump = new Yaml().dumpAs(configOfYaml, Tag.MAP, null);
+            String dump = new org.yaml.snakeyaml.Yaml().dumpAsMap(configOfYaml);
+            //String dump = new org.yaml.snakeyaml.Yaml().dumpAll(classes.entrySet().iterator());
+            //String dump = new org.yaml.snakeyaml.Yaml().dumpAs(configOfYaml, Tag.MAP, null);
             try (FileOutputStream outputStream = new FileOutputStream(file)) {
                 outputStream.write(dump.getBytes(StandardCharsets.UTF_8));
                 outputStream.flush();
