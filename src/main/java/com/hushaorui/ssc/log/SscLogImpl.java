@@ -3,9 +3,13 @@ package com.hushaorui.ssc.log;
 import java.time.LocalDateTime;
 
 public class SscLogImpl implements SscLog {
-    private SscLogLevel logLevel = SscLogLevel.INFO;
+    private SscLogLevel logLevel;
     private String className;
     public SscLogImpl(Class<?> clazz) {
+        this.className = clazz.getName();
+        logLevel = SscLogLevel.INFO;
+    }
+    public SscLogImpl(Class<?> clazz, SscLogLevel logLevel) {
         this.className = clazz.getName();
     }
     public enum SscLogLevel {
@@ -98,11 +102,6 @@ public class SscLogImpl implements SscLog {
             return;
         }
         printLog(data, SscLogLevel.ERROR, e);
-    }
-
-    @Override
-    public void setLogLevel(String logLevel) {
-        this.logLevel = SscLogLevel.valueOf(logLevel.toUpperCase());
     }
 
     protected void printLog(String data, SscLogLevel logLevel, Exception e) {

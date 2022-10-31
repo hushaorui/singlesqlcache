@@ -11,6 +11,4 @@ public interface SscLog {
     void error(String formatString, Object... params);
     void error(String formatString, Exception e, Object... params);
     void error(String data, Exception e);
-    /** 日志级别， 如 DEBUG, INFO WARN ERROR ... */
-    void setLogLevel(String logLevel);
 }
