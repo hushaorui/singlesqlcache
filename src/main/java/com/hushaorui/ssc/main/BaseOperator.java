@@ -6,7 +6,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * 数据操作器
@@ -32,14 +31,24 @@ public interface BaseOperator<DATA> {
 
     /**
      * 根据条件查询数据
+     * @return 数据集合
+     */
+    default List<DATA> selectByCondition() {
+        return selectByCondition(Collections.emptyList());
+    }
+    /**
+     * 根据条件查询数据
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
     default List<DATA> selectByCondition(Pair<String, Object>... conditions) {
+        List<DATA> result;
         if (conditions == null || conditions.length == 0) {
-            return selectByCondition(Collections.emptyList());
+            result = selectByCondition(Collections.emptyList());
+        } else {
+            result = selectByCondition(Arrays.asList(conditions));
         }
-        return selectByCondition(Arrays.asList(conditions));
+        return result;
     }
 
     /**
@@ -56,6 +65,13 @@ public interface BaseOperator<DATA> {
      */
     <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions);
 
+    /**
+     * 根据条件查询id
+     * @return id集合
+     */
+    default <T> List<T> selectIdByCondition() {
+        return selectIdByCondition(Collections.emptyList());
+    }
     /**
      * 根据条件查询id
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
@@ -75,6 +91,13 @@ public interface BaseOperator<DATA> {
      */
     int countByCondition(List<Pair<String, Object>> conditions);
 
+    /**
+     * 根据条件查询数据的总数
+     * @return 数据集合
+     */
+    default int countByCondition() {
+        return countByCondition(Collections.emptyList());
+    }
     /**
      * 根据条件查询数据的总数
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值

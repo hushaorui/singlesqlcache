@@ -108,7 +108,7 @@ public class TableOperatorFactory {
                     if (e instanceof NoClassDefFoundError) {
                         log.warn("No class: org.yaml.snakeyaml.Yaml");
                     } else {
-                        log.error(String.format("读取%s文件失败", globalConfig.getClassesDescFilePath()), e);
+                        log.error(e, "读取%s文件失败", globalConfig.getClassesDescFilePath());
                     }
                 }
             }
@@ -122,7 +122,7 @@ public class TableOperatorFactory {
             timer.schedule(timerTask = getTimerTask(), persistenceIntervalTime, persistenceIntervalTime);
             saveSwitch = true;
             getSwitch = true;
-            log.debug(String.format("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime()));
+            log.debug("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime());
             if (globalConfig.isAddShutdownHook()) {
                 // 程序关闭前执行
                 Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
@@ -154,71 +154,128 @@ public class TableOperatorFactory {
         return new TimerTask() {
             @Override
             public void run() {
-                log.debug(String.format("%s 定时任务执行开始", name));
+                log.debug("%s 定时任务执行开始", name);
                 final long now = System.currentTimeMillis();
                 try {
                     idCacheMap.forEach((objectClass, value) -> value.entrySet().removeIf(cacheEntry -> {
                         ObjectInstanceCache cache = cacheEntry.getValue();
                         if (cache.getCacheStatus().isNeedSynToDB()) {
-                            Operator<?> noCachedOperator = getNoCachedOperator(objectClass);
-                            if (noCachedOperator == null) {
-                                return false;
-                            }
-                            String option = "";
-                            Object optionObject = null;
-                            try {
-                                synchronized (cache) {
-                                    optionObject = cache.getObjectInstance();
-                                    CacheStatus newStatus;
-                                    switch (cache.getCacheStatus()) {
-                                        case DELETE: {
-                                            option = "deleteById";
-                                            if (optionObject != null) {
-                                                noCachedOperator.delete(cache.getId());
+                            Comparable tableSplitFieldValue = cache.getTableSplitFieldValue();
+                            if (tableSplitFieldValue == null) {
+                                // 没有特殊分表字段
+                                Operator<?> noCachedOperator = getNoCachedOperator(objectClass);
+                                String option = "";
+                                Object dataObject = null;
+                                try {
+                                    synchronized (cache) {
+                                        dataObject = cache.getObjectInstance();
+                                        CacheStatus newStatus;
+                                        switch (cache.getCacheStatus()) {
+                                            case DELETE: {
+                                                option = "deleteById";
+                                                if (dataObject != null) {
+                                                    noCachedOperator.delete(cache.getId());
+                                                }
+                                                newStatus = CacheStatus.AFTER_DELETE;
                                             }
-                                            newStatus = CacheStatus.AFTER_DELETE;
-                                        }
-                                        break;
-                                        case INSERT: {
-                                            option = "insert";
-                                            try {
-                                                doInsert(noCachedOperator, optionObject);
-                                                newStatus = CacheStatus.AFTER_INSERT;
-                                            } catch (Exception e) {
-                                                log.error(String.format("缓存插入数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache)), e);
-                                                // 插入失败的数据不删除
-                                                return false;
+                                            break;
+                                            case INSERT: {
+                                                option = "insert";
+                                                try {
+                                                    doInsert(noCachedOperator, dataObject);
+                                                    newStatus = CacheStatus.AFTER_INSERT;
+                                                } catch (Exception e) {
+                                                    log.error(e, "缓存插入数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache));
+                                                    // 插入失败的数据不删除
+                                                    return false;
+                                                }
                                             }
-                                        }
-                                        break;
-                                        case UPDATE: {
-                                            option = "update";
-                                            try {
-                                                doUpdate(noCachedOperator, optionObject);
+                                            break;
+                                            case UPDATE: {
+                                                option = "update";
+                                                try {
+                                                    doUpdate(noCachedOperator, dataObject);
+                                                    newStatus = CacheStatus.AFTER_UPDATE;
+                                                } catch (Exception e) {
+                                                    log.error(e, "缓存更新数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache));
+                                                    // 插入失败的数据不删除
+                                                    return false;
+                                                }
+                                            }
+                                            break;
+                                            default: {
                                                 newStatus = CacheStatus.AFTER_UPDATE;
-                                            } catch (Exception e) {
-                                                log.error(String.format("缓存更新数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache)), e);
-                                                // 插入失败的数据不删除
-                                                return false;
                                             }
                                         }
-                                        break;
-                                        default: {
-                                            newStatus = CacheStatus.AFTER_UPDATE;
-                                        }
+                                        // 最后设置状态
+                                        cache.setCacheStatus(newStatus);
                                     }
-                                    // 最后设置状态
-                                    cache.setCacheStatus(newStatus);
+                                } catch (Exception e) {
+                                    log.error(e, "缓存同步进数据库失败,class:%s, object:%s, option:%s",
+                                            objectClass.getName(), globalConfig.getJsonSerializer().toJsonString(dataObject), option);
                                 }
-                            } catch (Exception e) {
-                                log.error(String.format("缓存同步进数据库失败,class:%s, object:%s, option:%s",
-                                        objectClass.getName(), globalConfig.getJsonSerializer().toJsonString(optionObject), option), e);
+                            } else {
+                                // 存在特殊分表字段
+                                SpecialOperator<?> specialOperator = getNoCachedSpecialOperator(objectClass);
+                                String option = "";
+                                Object dataObject = null;
+                                try {
+                                    synchronized (cache) {
+                                        dataObject = cache.getObjectInstance();
+                                        CacheStatus newStatus;
+                                        switch (cache.getCacheStatus()) {
+                                            case DELETE: {
+                                                option = "deleteById";
+                                                if (dataObject != null) {
+                                                    Method deleteMethod = specialOperator.getClass().getMethod("delete", Object.class);
+                                                    deleteMethod.invoke(specialOperator, dataObject);
+                                                }
+                                                newStatus = CacheStatus.AFTER_DELETE;
+                                            }
+                                            break;
+                                            case INSERT: {
+                                                option = "insert";
+                                                try {
+                                                    Method insertMethod = specialOperator.getClass().getMethod("insert", Object.class);
+                                                    insertMethod.invoke(specialOperator, dataObject);
+                                                    newStatus = CacheStatus.AFTER_INSERT;
+                                                } catch (Exception e) {
+                                                    log.error(e, "缓存插入数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache));
+                                                    // 插入失败的数据不删除
+                                                    return false;
+                                                }
+                                            }
+                                            break;
+                                            case UPDATE: {
+                                                option = "update";
+                                                try {
+                                                    Method updateMethod = specialOperator.getClass().getMethod("update", Object.class);
+                                                    updateMethod.invoke(specialOperator, dataObject);
+                                                    newStatus = CacheStatus.AFTER_UPDATE;
+                                                } catch (Exception e) {
+                                                    log.error(e, "缓存更新数据失败，cache: %s", globalConfig.getJsonSerializer().toJsonString(cache));
+                                                    // 插入失败的数据不删除
+                                                    return false;
+                                                }
+                                            }
+                                            break;
+                                            default: {
+                                                newStatus = CacheStatus.AFTER_UPDATE;
+                                            }
+                                        }
+                                        // 最后设置状态
+                                        cache.setCacheStatus(newStatus);
+                                    }
+                                } catch (Exception e) {
+                                    log.error(e, "缓存同步进数据库失败,class:%s, object:%s, option:%s",
+                                            objectClass.getName(), globalConfig.getJsonSerializer().toJsonString(dataObject), option);
+                                }
                             }
                         }
                         // 清理超过最大闲置时间的缓存数据
                         boolean remove = cache.getLastUseTime() + globalConfig.getMaxInactiveTime() < now;
                         if (remove) {
-                            log.debug(String.format("因长时间未使用，删除缓存, class:%s, id:%s", objectClass.getName(), cacheEntry.getKey()));
+                            log.debug("因长时间未使用，删除缓存, class:%s, id:%s", objectClass.getName(), cacheEntry.getKey());
                         }
                         return remove;
                     }));
@@ -230,7 +287,7 @@ public class TableOperatorFactory {
                                 long lastUseTime = entry.getValue().getLastUseTime();
                                 boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.debug(String.format("因长时间未使用，删除(unique)缓存, class:%s,uniqueName:%s,uniqueValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.debug("因长时间未使用，删除(unique)缓存, class:%s,uniqueName:%s,uniqueValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey());
                                 }
                                 return delete;
                             });
@@ -246,7 +303,7 @@ public class TableOperatorFactory {
                                 long lastUseTime = objectListCache.getLastUseTime();
                                 boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
                                 if (delete) {
-                                    log.debug(String.format("因长时间未使用，删除(tableSplitField)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey()));
+                                    log.debug("因长时间未使用，删除(tableSplitField)缓存, class:%s,fieldName:%s,fieldValue:%s", entry1.getKey().getName(), entry2.getKey(), entry.getKey());
                                 }
                                 return delete;
                             });
@@ -257,7 +314,7 @@ public class TableOperatorFactory {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                log.debug(String.format("%s 定时任务执行结束", name));
+                log.debug("%s 定时任务执行结束", name);
             }
         };
     }
@@ -266,7 +323,7 @@ public class TableOperatorFactory {
      * 关闭缓存
      */
     public void close() {
-        log.warn("开始关闭缓存");
+        log.warn(name + "开始关闭缓存");
         // 先关闭存储缓存
         saveSwitch = false;
         if (timerTask != null) {
@@ -287,7 +344,7 @@ public class TableOperatorFactory {
         tableSplitFieldCacheMap.clear();
         // 最后关闭取缓存开关，保证缓存中的数据都同步到了数据库后才开始从数据库中直接拿数据
         getSwitch = false;
-        log.warn("缓存已关闭");
+        log.warn(name + "缓存已关闭");
     }
 
     private DataClassDesc getDataClassDesc(Class<?> clazz, SscData sscData) {
@@ -454,7 +511,7 @@ public class TableOperatorFactory {
         return dataClassDesc;
     }
 
-    private DataClassDesc getDataClassDesc(Class<?> clazz) {
+    private DataClassDesc getDataClassDesc(Class<?> clazz, Boolean haveTableSplitField) {
         DataClassDesc dataClassDesc = new DataClassDesc();
         dataClassDesc.setDataClass(clazz);
         // 表的数量
@@ -489,6 +546,13 @@ public class TableOperatorFactory {
                 tableName = value;
             }
             tableSplitField = annotation.tableSplitField().length() > 0 ? annotation.tableSplitField() : null;
+        }
+        if (haveTableSplitField != null) {
+            if (haveTableSplitField && tableSplitField == null) {
+                throw new SscRuntimeException(String.format("class:%s 未指定分表字段，请使用getOperator方法获取操作对象", clazz.getName()));
+            } else if (! haveTableSplitField && tableSplitField != null) {
+                throw new SscRuntimeException(String.format("class:%s 已指定分表字段: %s，请使用getSpecialOperator方法获取操作对象", clazz.getName(), tableSplitField));
+            }
         }
         if (allTableNames.contains(tableName)) {
             // 表名重复
@@ -649,9 +713,9 @@ public class TableOperatorFactory {
         return dataClassDesc;
     }
 
-    private SscTableInfo getTableInfoNotNull(Class<?> dataClass) {
+    private SscTableInfo getTableInfoNotNull(Class<?> dataClass, Boolean haveTableSplitField) {
         return tableInfoMapping.computeIfAbsent(dataClass, clazz -> {
-            DataClassDesc dataClassDesc = getDataClassDesc(clazz);
+            DataClassDesc dataClassDesc = getDataClassDesc(clazz, haveTableSplitField);
             return newTableInfo(clazz, dataClassDesc, globalConfig);
         });
     }
@@ -666,7 +730,7 @@ public class TableOperatorFactory {
         try {
             clazz = Class.forName(className);
         } catch (ClassNotFoundException e) {
-            log.error("创建类描述对象失败：" + className, e);
+            log.error(e, "创建类描述对象失败：%s", className);
             return;
         }
         DataClassDesc dataClassDesc = getDataClassDesc(clazz, sscData);
@@ -710,7 +774,7 @@ public class TableOperatorFactory {
                 }
                 maxId++;
                 policy.map.put(clazz, new AtomicInteger(maxId));
-                log.debug(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
+                log.debug("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId);
             } else {
                 Map<Class<?>, AtomicLong> map;
                 if (idGeneratePolicy instanceof DefaultLongIdGeneratePolicy) {
@@ -732,13 +796,13 @@ public class TableOperatorFactory {
                     }
                     maxId++;
                     map.put(clazz, new AtomicLong(maxId));
-                    log.debug(String.format("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId));
+                    log.debug("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId);
                 }
             }
-            log.debug(String.format("class: %s 数据类注册成功", clazz.getName()));
+            log.debug("class: %s 数据类注册成功", clazz.getName());
             return sscTableInfo;
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-            log.error("创建TableInfo失败", e);
+            log.error(e, "创建TableInfo失败");
             return null;
         }
     }
@@ -747,17 +811,17 @@ public class TableOperatorFactory {
      * 提前注册所有的数据类
      */
     public void registerDataClass(Class<?> dataClass) {
-        getTableInfoNotNull(dataClass);
+        getTableInfoNotNull(dataClass, null);
     }
 
     private void dropTable(String[] dropTableSql) {
         for (String sql : dropTableSql) {
             try {
-                jdbcTemplate.execute(sql);
                 log.debug("删除表, sql: " + sql);
+                jdbcTemplate.execute(sql);
             } catch (Exception e) {
                 if (! e.getMessage().contains("does not exist")) {
-                    log.error("删除表失败", e);
+                    log.error(e, "删除表失败");
                 }
             }
         }
@@ -766,11 +830,11 @@ public class TableOperatorFactory {
     private void createTable(String[] createTableSql) {
         for (String sql : createTableSql) {
             try {
-                jdbcTemplate.execute(sql);
                 log.debug("尝试创建表, sql: " + sql);
+                jdbcTemplate.execute(sql);
             } catch (Exception e) {
                 if (! e.getMessage().contains("already exist")) {
-                    log.error("尝试创建表失败", e);
+                    log.error(e, "尝试创建表失败");
                 }
             }
         }
@@ -810,7 +874,7 @@ public class TableOperatorFactory {
     }
 
     private <T> Operator<T> getNoCachedOperator(Class<T> dataClass) {
-        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass, false);
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
@@ -818,7 +882,7 @@ public class TableOperatorFactory {
     }
 
     private <T> SpecialOperator<T> getNoCachedSpecialOperator(Class<T> dataClass) {
-        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass, true);
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
@@ -846,6 +910,11 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 return completelyOperator.selectByTableSplitField(tableSplitFieldValue);
+            }
+
+            @Override
+            public <T> List<T> selectAllId(Comparable tableSplitFieldValue) {
+                return completelyOperator.selectAllId(tableSplitFieldValue);
             }
 
             @Override
@@ -983,21 +1052,20 @@ public class TableOperatorFactory {
 
             @Override
             public void insert(Object object) {
-                Object id;
-                if (classDesc.isUseIdGeneratePolicy()) {
-                    IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
-                    // 根据id生成策略获取新的id
-                    id = idGeneratePolicy.getId(clazz);
-                    setObjectId(object, id, classDesc);
-                } else {
-                    id = getIdValueFromObject(classDesc, object);
-                    assert id != null : new SscRuntimeException("插入数据失败，id为null且不使用id生成策略, class: " + clazz.getName());
+                Object id = getIdValueFromObject(classDesc, object);
+                if (id == null) {
+                    if (classDesc.isUseIdGeneratePolicy()) {
+                        IdGeneratePolicy<?> idGeneratePolicy = globalConfig.getIdGeneratePolicyMap().get(sscTableInfo.getIdJavaType());
+                        // 根据id生成策略获取新的id
+                        id = idGeneratePolicy.getId(clazz);
+                        setObjectId(object, id, classDesc);
+                    }
                 }
-
+                assert id != null : new SscRuntimeException("插入数据失败，id为null且不使用id生成策略, class: " + clazz.getName());
                 int tableIndex = getTableIndex(classDesc, object, id);
                 String insertSql = sscTableInfo.getInsertSql()[tableIndex];
                 Object[] params = getInsertParamArrayFromObject(classDesc, object);
-                log.debug(String.format("执行插入语句：%s, id:%s", insertSql, id));
+                log.debug("执行插入语句：%s, id:%s", insertSql, id);
                 jdbcTemplate.update(insertSql, params);
             }
 
@@ -1037,7 +1105,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(classDesc, object, id);
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
                 Object[] params = getUpdateParamArrayFromObject(classDesc, object);
-                log.debug(String.format("执行更新语句：%s, id:%s", updateSql, id));
+                log.debug("执行更新语句：%s, id:%s", updateSql, id);
                 jdbcTemplate.update(updateSql, params);
             }
 
@@ -1062,7 +1130,7 @@ public class TableOperatorFactory {
 
             private void delete(Comparable id, int tableIndex) {
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
-                log.debug(String.format("执行删除语句：%s, id:%s", deleteSql, id));
+                log.debug("执行删除语句：%s, id:%s", deleteSql, id);
                 jdbcTemplate.update(deleteSql, id);
             }
 
@@ -1111,6 +1179,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(classDesc, null, id);
                 String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
+                    log.debug("执行查询语句(selectById): %s, id:%s", sql, id);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查不到数据时会抛出此异常
@@ -1123,6 +1192,7 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
                 String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
+                    log.debug("执行查询语句(selectById): %s, id:%s, tableSplitFieldValue:%s", sql, id, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查不到数据时会抛出此异常
@@ -1139,6 +1209,7 @@ public class TableOperatorFactory {
                 String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
                 Object[] params = getConditionParams(classDesc, propNames, data);
                 try {
+                    log.debug("执行查询语句(selectByUniqueName): %s, uniqueName:%s", sql, uniqueName);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查到数据数量是0的时候会抛出此异常
@@ -1156,6 +1227,7 @@ public class TableOperatorFactory {
                 String sql = sscTableInfo.getUniqueAndFieldSelectSqlMap().get(uniqueName)[tableIndex];
                 Object[] params = getConditionParams(classDesc, propNames, data);
                 try {
+                    log.debug("执行查询语句(selectByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查到数据数量是0的时候会抛出此异常
@@ -1169,6 +1241,7 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                log.debug("执行查询语句(selectByCondition): %s", sscSqlResult.getSql());
                 return jdbcTemplate.query(sscSqlResult.getSql(), getRowMapper(), params);
             }
 
@@ -1178,6 +1251,7 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                log.debug("执行查询语句(countByCondition): %s", sscSqlResult.getSql());
                 List<Integer> integers = jdbcTemplate.queryForList(sscSqlResult.getSql(), int.class, params);
                 if (integers == null) {
                     return 0;
@@ -1195,6 +1269,7 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
+                log.debug("执行查询语句(selectIdByCondition)：%s", sscSqlResult.getSql());
                 return (List<T>) jdbcTemplate.queryForList(sscSqlResult.getSql(), (Class<Object>) sscTableInfo.getIdJavaType(), params);
             }
 
@@ -1206,12 +1281,24 @@ public class TableOperatorFactory {
                 String sql = sscTableInfo.getSelectByTableSplitFieldSql()[tableIndex];
                 assert sql != null : new SscRuntimeException("未能找到对应表索引的sql, index: " + tableIndex);
                 // 执行sql
+                log.debug("执行查询语句(selectByTableSplitField)：%s, tableSplitFieldValue:%s", sql, tableSplitFieldValue);
                 return jdbcTemplate.query(sql, getRowMapper(), tableSplitFieldValue);
             }
 
             @Override
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
+            }
+
+            @Override
+            public <T> List<T> selectAllId(Comparable tableSplitFieldValue) {
+                // 根据分表字段获取对应的表的索引
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sscTableInfo.getSelectIdByTableSplitFieldSql()[tableIndex];
+                assert sql != null : new SscRuntimeException("未能找到对应表索引的sql, index: " + tableIndex);
+                // 执行sql
+                log.debug("执行查询语句(selectAllId)：%s, tableSplitFieldValue:%s", sql, tableSplitFieldValue);
+                return (List<T>) jdbcTemplate.queryForList(sql, (Class<Object>) sscTableInfo.getIdJavaType(), tableSplitFieldValue);
             }
         };
     }
@@ -1253,7 +1340,10 @@ public class TableOperatorFactory {
             }
 
             private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, T object, CacheStatus newStatus) {
-                if (CacheStatus.DELETE.equals(newStatus)) {
+                insertOrUpDateOrDelete(objectClass, id, getFieldValueFromObject(classDesc, classDesc.getTableSplitField(), object), object, newStatus);
+            }
+            private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, Comparable tableSplitFieldValue, T object, CacheStatus newStatus) {
+                /*if (CacheStatus.DELETE.equals(newStatus)) {
                     // 需要删除该数据
                     Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.get(objectClass);
                     if (classMap != null) {
@@ -1261,63 +1351,45 @@ public class TableOperatorFactory {
                         if (cache != null) {
                             synchronized (cache) {
                                 cache.setCacheStatus(newStatus);
-                                log.debug(String.format("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object));
+                                log.debug("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object);
                             }
+                            // 尝试添加分表字段缓存
+                            addTableSplitFieldCache(classDesc, id, tableSplitFieldValue, true);
                         }
                     }
                     return;
-                }
+                }*/
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(objectClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.computeIfAbsent(id, key -> {
                     ObjectInstanceCache c = new ObjectInstanceCache();
                     c.setId(id);
-                    return c;
-                });
-                synchronized (cache) {
+                    c.setObjectClass(objectClass);
+                    c.setTableSplitFieldValue(tableSplitFieldValue);
                     if (object != null) {
-                        cache.setObjectInstance(object);
-                        if (cache.getLastModifyTime() == 0) {
+                        // 注意，只有在创建缓存对象的时候或者缓存中的数据对象为null(查询不存在的数据)时才会设置
+                        c.setObjectInstance(object);
+                        if (c.getLastModifyTime() == 0) {
                             // == 0的时候为该cache对象第一次创建的时候，可能需要判断唯一键
                             // 唯一键的缓存
                             // 尝试获取数据对象中的唯一字段(或联合字段)的值
-                            addUniqueValueCache(classDesc, object, cache);
+                            addUniqueValueCache(classDesc, object, c);
                             // 尝试添加分表字段缓存
-                            addTableSplitFieldCache(classDesc, object, id);
+                            addTableSplitFieldCache(classDesc, id, tableSplitFieldValue, newStatus.isDelete());
                         }
                     }
                     // 当前状态
-                    CacheStatus currentStatus = cache.getCacheStatus();
-                    if (currentStatus != null && newStatus.isNeedSynToDB()) {
-                        // 删除的逻辑在上面已经处理过了， 这里不需要再考虑删除的情况
-                        switch (currentStatus) {
-                            // 已经删除的，现在要插入
-                            case AFTER_DELETE:
-                                cache.setCacheStatus(CacheStatus.INSERT);
-                                break;
-                            // 原本要删除的，转为更新
-                            case DELETE:
-                                // 已经插入的，转为更新
-                            case AFTER_INSERT:
-                                // 已经更新的，转为更新
-                            case AFTER_UPDATE:
-                                cache.setCacheStatus(CacheStatus.UPDATE);
-                                break;
-                            // 无需处理
-                            case INSERT:
-                                // 无需处理
-                            case UPDATE:
-                                break;
-                        }
-                    } else {
-                        // 只是单纯添加缓存，不需要同步数据库
-                        cache.setCacheStatus(newStatus);
+                    return c;
+                });
+                synchronized (cache) {
+                    if (cache.getObjectInstance() == null) {
+                        cache.setObjectInstance(object);
                     }
-                    cache.setObjectClass(objectClass);
-                    long now = System.currentTimeMillis();
-                    cache.setLastModifyTime(now);
-                    cache.setLastUseTime(now);
+                    cache.setCacheStatus(CacheStatus.getResultStatus(cache.getCacheStatus(), newStatus));
                 }
-                log.debug(String.format("%s缓存, class:%s, id: %s", cache.getCacheStatus(), objectClass.getName(), id));
+                long now = System.currentTimeMillis();
+                cache.setLastModifyTime(now);
+                cache.setLastUseTime(now);
+                log.debug("%s缓存, class:%s, id: %s", cache.getCacheStatus(), objectClass.getName(), id);
             }
 
             @Override
@@ -1333,19 +1405,19 @@ public class TableOperatorFactory {
             @Override
             public void delete(T object) {
                 Comparable id = getIdValueFromObject(classDesc, object);
-                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
+                insertOrUpDateOrDelete(dataClass, id, object, CacheStatus.DELETE);
             }
 
             @Override
             public void delete(Comparable id) {
-                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
+                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.DELETE);
             }
 
             @Override
             public T selectByIdNotNull(Comparable id, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id);
                     if (value == null) {
@@ -1364,7 +1436,7 @@ public class TableOperatorFactory {
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(String.valueOf(id));
                 if (cache == null) {
-                    log.debug(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     T value = (T) noCachedOperator.selectById(id);
@@ -1422,7 +1494,7 @@ public class TableOperatorFactory {
             public T selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     CompletelyOperator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     Object value = noCachedOperator.selectById(id, tableSplitFieldValue);
                     if (value == null) {
@@ -1439,9 +1511,9 @@ public class TableOperatorFactory {
                     return (T) value;
                 }
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
-                ObjectInstanceCache cache = classMap.get(String.valueOf(id));
+                ObjectInstanceCache cache = classMap.get(id);
                 if (cache == null) {
-                    log.debug(String.format("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id));
+                    log.debug("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     // 缓存击穿，查询数据库
                     CompletelyOperator<T> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
                     T value = noCachedOperator.selectById(id, tableSplitFieldValue);
@@ -1451,9 +1523,9 @@ public class TableOperatorFactory {
                             if (value == null && insertFunction != null) {
                                 value = insertFunction.apply(id);
                                 if (value == null) {
-                                    insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
+                                    insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, null, CacheStatus.AFTER_DELETE);
                                 } else {
-                                    insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.INSERT);
+                                    insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, value, CacheStatus.INSERT);
                                 }
                             }
                         }
@@ -1462,11 +1534,14 @@ public class TableOperatorFactory {
                 } else {
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
-                    if (cache.getCacheStatus().isDelete() && insertFunction != null) {
+                    if (cache.getCacheStatus().isDelete()) {
+                        if (insertFunction == null) {
+                            return null;
+                        }
                         synchronized (cache) {
                             // 该数据原本需要删除
                             if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
-                                T newInstance = (T) insertFunction.apply(id);
+                                T newInstance = insertFunction.apply(id);
                                 cache.setObjectInstance(newInstance);
                                 // 预备删除，转为更新
                                 cache.setCacheStatus(CacheStatus.UPDATE);
@@ -1514,19 +1589,19 @@ public class TableOperatorFactory {
                 }
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
                     return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
                 if (uniqueValue == null) {
-                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.error("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
                     return null;
                 }
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.debug(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
+                    log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data);
                     // 缓存击穿，查询数据库
                     T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
@@ -1573,19 +1648,19 @@ public class TableOperatorFactory {
                 }
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
                     return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
                 if (uniqueValue == null) {
-                    log.error(String.format("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data));
+                    log.error("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
                     return null;
                 }
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.debug(String.format("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data));
+                    log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data);
                     // 缓存击穿，查询数据库
                     T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
                     // 如果没有id，无法放入缓存
@@ -1596,7 +1671,7 @@ public class TableOperatorFactory {
                         Comparable id = getIdValueFromObject(classDesc, value);
                         if (id != null) {
                             // 添加id缓存(同时也会添加唯一键缓存)
-                            insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.AFTER_INSERT);
+                            insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, value, CacheStatus.AFTER_INSERT);
                         } else {
                             // 没有id(一般不可能存在这种情况)
                             addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
@@ -1650,46 +1725,75 @@ public class TableOperatorFactory {
                         }
                         idList.add(idValue);
                         // 添加id缓存
-                        insertOrUpDateOrDelete(dataClass, idValue, data, CacheStatus.AFTER_INSERT);
+                        insertOrUpDateOrDelete(dataClass, idValue, tableSplitFieldValue, data, CacheStatus.AFTER_INSERT);
                     }
                 }
                 return idList;
             }
 
             @Override
+            public <T1> List<T1> selectAllId(Comparable tableSplitFieldValue) {
+                if (! getSwitch) {
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectAllId(tableSplitFieldValue);
+                }
+                Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
+                ObjectListCache cache = getCacheFromMap(cacheMap, tableSplitFieldValue);
+                if (cache == null) {
+                    log.debug("未找到缓存(selectAllId)，直接查询数据库, class:%s, tableSplitFieldValue:%s", dataClass.getName(), tableSplitFieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectAllId(tableSplitFieldValue);
+                }
+                cache.setLastUseTime(System.currentTimeMillis());
+                return (List<T1>) cache.getIdList();
+            }
+
+            private ObjectListCache getCacheFromMap(Map<Comparable, ObjectListCache> cacheMap, Comparable tableSplitFieldValue) {
+                ObjectListCache cache = cacheMap.get(tableSplitFieldValue);
+                List<Comparable> idListFromDb;
+                if (cache == null) {
+                    // 这里调用一下这个方法，该方法会创建新的 ObjectListCache
+                    idListFromDb = getIdListFromDb(tableSplitFieldValue);
+                    cache = cacheMap.get(tableSplitFieldValue);
+                    if (cache == null) {
+                        return null;
+                    }
+                } else {
+                    idListFromDb = null;
+                }
+                if (CacheStatus.AFTER_INSERT.equals(cache.getCacheStatus())) {
+                    // 缓存对象是新创建的，需要把从数据库中查到的id加进来
+                    cache.setCacheStatus(CacheStatus.AFTER_UPDATE);
+                    List<Comparable> idList = cache.getIdList();
+                    if (idListFromDb == null) {
+                        idListFromDb = getIdListFromDb(tableSplitFieldValue);
+                    }
+                    idListFromDb.forEach(idInList -> {
+                        if (! idList.contains(idInList)) {
+                            idList.add(idInList);
+                        }
+                    });
+                }
+                return cache;
+            }
+
+            @Override
             public List<T> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
-                    log.debug(String.format("缓存已关闭，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, tableSplitFieldValue:%s", dataClass.getName(), tableSplitFieldValue);
                     return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
                 }
                 Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
-                ObjectListCache cache = cacheMap.computeIfAbsent(tableSplitFieldValue, k2 -> {
-                    log.debug(String.format("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, value:%s", dataClass.getName(), tableSplitFieldValue));
-                    ObjectListCache objectListCache = new ObjectListCache();
-                    // 缓存击穿，查询数据库
-                    List<Comparable> idList = getIdListFromDb(tableSplitFieldValue);
-                    objectListCache.setIdList(Collections.synchronizedList(idList));
-                    // 这里不是作为缓存的状态，而是作为一个标记，标记为已查询过数据库
-                    objectListCache.setCacheStatus(CacheStatus.AFTER_UPDATE);
-                    objectListCache.setLastUseTime(System.currentTimeMillis());
-                    return objectListCache;
-                });
-                if (CacheStatus.AFTER_INSERT.equals(cache.getCacheStatus())) {
-                    // 没有查询过数据库，查询一下
-                    List<Comparable> idList = getIdListFromDb(tableSplitFieldValue);
-                    synchronized (cache) {
-                        cache.getIdList().addAll(idList);
-                        // 标记为已查询过数据库
-                        cache.setCacheStatus(CacheStatus.AFTER_UPDATE);
-                    }
+                ObjectListCache cache = getCacheFromMap(cacheMap, tableSplitFieldValue);
+                if (cache == null) {
+                    log.debug("未找到缓存(selectByTableSplitField)，直接查询数据库, class:%s, tableSplitFieldValue:%s", dataClass.getName(), tableSplitFieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
                 }
                 cache.setLastUseTime(System.currentTimeMillis());
                 List<Comparable> idList = cache.getIdList();
                 List<T> dataList = new ArrayList<>(idList.size());
                 for (Comparable idValue : idList) {
                     // 根据id去查询对应的数据
-                    T data = selectById(idValue);
+                    T data = selectById(idValue, tableSplitFieldValue);
                     if (data == null) {
                         continue;
                     }
@@ -1709,7 +1813,7 @@ public class TableOperatorFactory {
         if (globalConfig.getMaxInactiveTime() <= 0) {
             return getNoCachedOperator(dataClass);
         }
-        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass, false);
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
@@ -1781,7 +1885,7 @@ public class TableOperatorFactory {
         if (globalConfig.getMaxInactiveTime() <= 0) {
             return getNoCachedSpecialOperator(dataClass);
         }
-        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass);
+        SscTableInfo sscTableInfo = getTableInfoNotNull(dataClass, true);
         if (sscTableInfo == null) {
             throw new SscRuntimeException("The class is unregistered: " + dataClass.getName());
         }
@@ -1839,31 +1943,43 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public <T> List<T> selectAllId(Comparable tableSplitFieldValue) {
+                return completelyOperator.selectAllId(tableSplitFieldValue);
+            }
+
+            @Override
             public JdbcTemplate getJdbcTemplate() {
                 return completelyOperator.getJdbcTemplate();
             }
         }) : getNoCachedSpecialOperator(dataClass, sscTableInfo);
     }
 
-    private void addTableSplitFieldCache(DataClassDesc classDesc, Object object, Comparable id) {
+    private void addTableSplitFieldCache(DataClassDesc classDesc, Comparable id, Comparable tableSplitFieldValue, boolean delete) {
         String tableSplitField = classDesc.getTableSplitField();
         if (tableSplitField == null) {
             return;
         }
-        Object fieldValue = getFieldValueFromObject(classDesc, tableSplitField, object);
-        if (fieldValue == null) {
-            log.error(String.format("分表字段:%s为null", tableSplitField));
-            return;
+        if (tableSplitFieldValue == null) {
+            throw new SscRuntimeException(String.format("添加分表字段缓存时失败，分表字段 %s 为null", tableSplitField));
         }
-        Comparable comparable = (Comparable) fieldValue;
-        Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(classDesc.getDataClass(), k1 -> new ConcurrentHashMap<>());
-        cacheMap.computeIfAbsent(comparable, k2 -> {
-            ObjectListCache objectListCache = new ObjectListCache();
-            objectListCache.setIdList(Collections.synchronizedList(new ArrayList<>()));
-            // 这里仅仅作为标记，并不代表缓存的状态
-            objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
-            return objectListCache;
-        }).getIdList().add(id);
+        Class<?> dataClass = classDesc.getDataClass();
+        Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
+        if (delete) {
+            // 本次为删除操作
+            ObjectListCache objectListCache = cacheMap.get(tableSplitFieldValue);
+            // 如果缓存不存在，就不操作
+            if (objectListCache != null) {
+                objectListCache.getIdList().remove(id);
+            }
+        } else {
+            cacheMap.computeIfAbsent(tableSplitFieldValue, k2 -> {
+                ObjectListCache objectListCache = new ObjectListCache();
+                objectListCache.setIdList(Collections.synchronizedList(new ArrayList<>()));
+                // 这里仅仅作为标记，并不代表缓存的状态
+                objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+                return objectListCache;
+            }).getIdList().add(id);
+        }
     }
 
     /**
@@ -1885,10 +2001,10 @@ public class TableOperatorFactory {
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, entry.getValue(), object);
                 Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(classDesc.getDataClass(), key2 -> new ConcurrentHashMap<>())
                         .computeIfAbsent(entry.getKey(), key -> new ConcurrentHashMap<>());
-                // 放入唯一字段
-                uniqueMap.putIfAbsent(uniqueValue, cache);
+                // 放入唯一字段，这里覆盖
+                uniqueMap.put(uniqueValue, cache);
             } catch (Exception e) {
-                log.error(String.format("获取数据的唯一字段值失败(getUniqueValue), classDesc:%s", globalConfig.getJsonSerializer().toJsonString(classDesc)));
+                log.error("获取数据的唯一字段值失败(getUniqueValue), classDesc:%s", globalConfig.getJsonSerializer().toJsonString(classDesc));
             }
         }
     }
@@ -2093,13 +2209,13 @@ public class TableOperatorFactory {
      * @param object    数据对象
      * @return 属性的值
      */
-    private Object getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
-        if (object == null) {
+    private <T> T getFieldValueFromObject(DataClassDesc classDesc, String propName, Object object) {
+        if (object == null || propName == null) {
             return null;
         }
         Method getMethod = classDesc.getPropGetMethods().get(propName);
         try {
-            return getMethod.invoke(object);
+            return (T) getMethod.invoke(object);
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new SscRuntimeException(String.format("Get %s value error in class: %s", propName, classDesc.getDataClass().getName()), e);
         }

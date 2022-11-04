@@ -38,4 +38,11 @@ public interface SpecialOperator<DATA> extends BaseOperator<DATA> {
      * @return 数据集合
      */
     List<DATA> selectByTableSplitField(Comparable tableSplitFieldValue);
+
+    /**
+     * 根据条件查询id
+     * @param tableSplitFieldValue 分表字段值
+     * @return id集合
+     */
+    <T> List<T> selectAllId(Comparable tableSplitFieldValue);
 }

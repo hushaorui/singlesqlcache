@@ -18,12 +18,16 @@ public abstract class SscTableInfo {
     protected String[] dropTableSql;
     /** 数据插入语句 */
     protected String[] insertSql;
-    /** 查询所有的语句 */
-    protected String selectAllSql;
+    ///** 查询所有的语句 */
+    //protected String selectAllSql;
+    ///** 查询所有id的语句 */
+    //protected String selectAllIdSql;
     /** 根据id查询指定数据 */
     protected String[] selectByIdSql;
     /** 根据分表字段查询(每种数据只能有一个分表字段) */
     protected String[] selectByTableSplitFieldSql;
+    /** 根据分表字段查询(每种数据只能有一个分表字段) */
+    protected String[] selectIdByTableSplitFieldSql;
 
     /** 根据唯一约束的字段查询数据 */
     protected Map<String, String> selectByUniqueKeySql;
@@ -69,6 +73,13 @@ public abstract class SscTableInfo {
     public String[] getSelectByTableSplitFieldSql() {
         return selectByTableSplitFieldSql;
     }
+    public String[] getSelectIdByTableSplitFieldSql() {
+        return selectIdByTableSplitFieldSql;
+    }
+
+    /*public String getSelectAllIdSql() {
+        return selectAllIdSql;
+    }*/
     public String[] getUpdateAllNotCachedByIdSql() {
         return updateAllNotCachedByIdSql;
     }

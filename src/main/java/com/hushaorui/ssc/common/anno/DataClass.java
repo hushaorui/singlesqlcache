@@ -10,7 +10,7 @@ public @interface DataClass {
     String value() default "";
     /** 表的数量，大于1时将进行分表，需要指定分表字段 */
     int tableCount() default 1;
-    /** 用于分表的字段名，未指定时默认使用id来分表 */
+    /** 用于分表的字段名，未指定时默认使用id来分表，该字段默认不可更新，不可为null */
     String tableSplitField() default "";
     /** 是否启用缓存，默认启用 */
     boolean cached() default true;

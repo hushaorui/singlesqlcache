@@ -90,7 +90,7 @@ public class SscLogImpl implements SscLog {
     }
 
     @Override
-    public void error(String formatString, Exception e, Object... params) {
+    public void error(Throwable e, String formatString, Object... params) {
         if (logLevel.ordinal() > SscLogLevel.ERROR.ordinal()) {
             return;
         }
@@ -98,14 +98,14 @@ public class SscLogImpl implements SscLog {
     }
 
     @Override
-    public void error(String data, Exception e) {
+    public void error(String data, Throwable e) {
         if (logLevel.ordinal() > SscLogLevel.ERROR.ordinal()) {
             return;
         }
         printLog(data, SscLogLevel.ERROR, e);
     }
 
-    protected void printLog(String data, SscLogLevel logLevel, Exception e) {
+    protected void printLog(String data, SscLogLevel logLevel, Throwable e) {
         String dateString = LocalDateTime.now().toString();
         System.out.println(String.format("%s %s [%s] - %s", dateString, logLevel.msg, className, data));
         if (e != null) {

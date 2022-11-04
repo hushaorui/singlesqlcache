@@ -9,6 +9,6 @@ public interface SscLog {
     void info(String formatString, Object... params);
     void warn(String formatString, Object... params);
     void error(String formatString, Object... params);
-    void error(String formatString, Exception e, Object... params);
-    void error(String data, Exception e);
+    void error(Throwable e, String formatString, Object... params);
+    void error(String data, Throwable e);
 }

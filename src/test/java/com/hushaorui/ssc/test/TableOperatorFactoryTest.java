@@ -41,6 +41,7 @@ public class TableOperatorFactoryTest {
             //config.setMaxInactiveTime(0);
             // 设置启动策略
             //config.setLaunchPolicy(SscLaunchPolicy.DROP_TABLE_AND_CRETE);
+            config.getLogFactory().setLogLevel("DEBUG");
             tableOperatorFactory = new TableOperatorFactory(jdbcTemplate, config);
         } catch (Exception e) {
             e.printStackTrace();
@@ -428,10 +429,24 @@ public class TableOperatorFactoryTest {
     public void test_tableCount_1_insert() {
         try {
             SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
-            TestMiniGame testMiniGame = new TestMiniGame();
-            testMiniGame.setUserId(100L);
-            testMiniGame.setData("data1");
-            operator.insert(testMiniGame);
+            {
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(100L);
+                testMiniGame.setData("data04");
+                operator.insert(testMiniGame);
+            }
+            {
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(101L);
+                testMiniGame.setData("data25");
+                operator.insert(testMiniGame);
+            }
+            {
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(102L);
+                testMiniGame.setData("data26");
+                operator.insert(testMiniGame);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -443,6 +458,71 @@ public class TableOperatorFactoryTest {
             SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
             List<TestMiniGame> testMiniGames = operator.selectByCondition(new Pair<>("", new ValueFirstResult(0)), new Pair<>("", new ValueMaxResult(1)));
             System.out.println(JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_MiniGame_select() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            List<TestMiniGame> testMiniGames = operator.selectByTableSplitField(100L);
+            System.out.println(JSONArray.toJSONString(testMiniGames));
+            /*{
+                // 中间加一个同userId的数据
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(100L);
+                testMiniGame.setData("data06");
+                operator.insert(testMiniGame);
+            }*/
+            /*{
+                // 删除一个数据
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setGameId(6L);
+                testMiniGame.setUserId(100L);
+                operator.delete(testMiniGame);
+            }*/
+            testMiniGames = operator.selectByTableSplitField(100L);
+            System.out.println(JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_MiniGame_insert_and_select() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            {
+                // 先插入，再查询
+                // 中间加一个同userId的数据
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(100L);
+                testMiniGame.setData("data06");
+                operator.insert(testMiniGame);
+            }
+            List<TestMiniGame> testMiniGames = operator.selectByTableSplitField(100L);
+            System.out.println("user100: " + JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_MiniGame_delete_and_select() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            {
+                // 先删除，再查询
+                // 删除一个数据
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setGameId(6L);
+                testMiniGame.setUserId(100L);
+                operator.delete(testMiniGame);
+            }
+            List<TestMiniGame> testMiniGames = operator.selectByTableSplitField(100L);
+            System.out.println("user100: " + JSONArray.toJSONString(testMiniGames));
         } catch (Exception e) {
             e.printStackTrace();
         }

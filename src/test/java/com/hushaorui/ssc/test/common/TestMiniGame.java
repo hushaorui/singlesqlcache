@@ -2,7 +2,7 @@ package com.hushaorui.ssc.test.common;
 
 import com.hushaorui.ssc.common.anno.DataClass;
 
-@DataClass(tableSplitField = "userId")
+@DataClass(tableSplitField = "userId", tableCount = 4)
 public class TestMiniGame {
     private Long gameId;
     private Long userId;

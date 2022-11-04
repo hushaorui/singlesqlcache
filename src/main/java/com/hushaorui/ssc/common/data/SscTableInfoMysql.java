@@ -44,9 +44,10 @@ public class SscTableInfoMysql extends SscTableInfo {
         String[] createTableSql = new String[tableCount];
         String[] dropTableSql = new String[tableCount];
         String[] insertSql = new String[tableCount];
-        StringBuilder selectAll = new StringBuilder();
+        //StringBuilder selectAll = new StringBuilder();
         String[] selectByIdSql = new String[tableCount];
         String[] selectByTableSplitFieldSql = new String[tableCount];
+        String[] selectIdByTableSplitFieldSql = new String[tableCount];
         Map<String, StringBuilder> selectByUniqueKeySqlMap = new HashMap<>();
 
         String[] updateAllNotCachedByIdSql = new String[tableCount];
@@ -163,16 +164,17 @@ public class SscTableInfoMysql extends SscTableInfo {
                 insertSql[i] = insert.toString();
             }
 
-            selectAll.append("select ").append(realTableName).append(".* from ").append(realTableName);
+            /*selectAll.append("select ").append(realTableName).append(".* from ").append(realTableName);
             // 根据id排序
             selectAll.append(" order by ").append(idColumnName);
             if (i < createTableSql.length - 1) {
                 // 不是最后一个表
                 selectAll.append("\n union all \n");
-            }
+            }*/
             selectByIdSql[i] = String.format("select * from %s where %s = ?", realTableName, idColumnName);
             if (tableSplitField != null) {
                 selectByTableSplitFieldSql[i] = String.format("select * from %s where %s = ?", realTableName, classDesc.getColumnByProp(tableSplitField));
+                selectIdByTableSplitFieldSql[i] = String.format("select %s from %s where %s = ?", idColumnName, realTableName, classDesc.getColumnByProp(tableSplitField));
             }
 
             deleteByIdSql[i] = String.format("delete from %s where %s = ?", realTableName, idColumnName);
@@ -207,9 +209,11 @@ public class SscTableInfoMysql extends SscTableInfo {
         this.createTableSql = createTableSql;
         this.dropTableSql = dropTableSql;
         this.insertSql = insertSql;
-        this.selectAllSql = selectAll.toString();
+        //this.selectAllSql = selectAll.toString();
+        //this.selectAllIdSql = this.selectAllSql.replace("* from ", idColumnName + " from");
         this.selectByIdSql = selectByIdSql;
         this.selectByTableSplitFieldSql = selectByTableSplitFieldSql;
+        this.selectIdByTableSplitFieldSql = selectIdByTableSplitFieldSql;
         Map<String, String> selectByUniqueKeySql = new HashMap<>();
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;

@@ -1,4 +1,4 @@
-/singlesqlcache.iml
+*.iml
 .idea
 /target
 /out
