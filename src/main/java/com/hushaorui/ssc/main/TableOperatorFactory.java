@@ -59,6 +59,7 @@ public class TableOperatorFactory {
      * 针对分表字段条件查询的数据缓存 key1:pojoClass, key2:分表字段名称, key3:字段的值, value:cacheObject
      */
     private Map<Class<?>, Map<Comparable, ObjectListCache>> tableSplitFieldCacheMap = new ConcurrentHashMap<>();
+    private Map<Class<?>, Map<String, Map<Comparable, ObjectListCache>>> groupFieldCacheMap = new ConcurrentHashMap<>();
 
     /**
      * 存入缓存的开关
@@ -311,6 +312,23 @@ public class TableOperatorFactory {
                         });
                         return map.isEmpty();
                     });
+                    groupFieldCacheMap.entrySet().removeIf(entry1 -> {
+                        Map<String, Map<Comparable, ObjectListCache>> outerMap = entry1.getValue();
+                        outerMap.entrySet().removeIf(entry2 -> {
+                            Map<Comparable, ObjectListCache> innerMap = entry2.getValue();
+                            innerMap.entrySet().removeIf(entry -> {
+                                long lastUseTime = entry.getValue().getLastUseTime();
+                                boolean delete = lastUseTime == 0 || lastUseTime + globalConfig.getMaxInactiveTime() < now;
+                                if (delete) {
+                                    log.debug("因长时间未使用，删除(group)缓存, class:%s,fieldName:%s,fieldValue:%s",
+                                            entry1.getKey().getName(), entry2.getKey(), entry.getKey());
+                                }
+                                return delete;
+                            });
+                            return innerMap.isEmpty();
+                        });
+                        return outerMap.isEmpty();
+                    });
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -342,6 +360,8 @@ public class TableOperatorFactory {
         uniqueFieldCacheMap.clear();
         // 清理分表字段值缓存
         tableSplitFieldCacheMap.clear();
+        // 清理分组字段缓存
+        groupFieldCacheMap.clear();
         // 最后关闭取缓存开关，保证缓存中的数据都同步到了数据库后才开始从数据库中直接拿数据
         getSwitch = false;
         log.warn(name + "缓存已关闭");
@@ -410,6 +430,13 @@ public class TableOperatorFactory {
             notUpdateProps = new HashSet<>();
         } else {
             notUpdateProps = dataClassDesc.getNotUpdateProps();
+        }
+        // 所有分组字段集合
+        Set<String> groupProps;
+        if (dataClassDesc.getGroupProps() == null) {
+            groupProps = new HashSet<>();
+        } else {
+            groupProps = dataClassDesc.getGroupProps();
         }
         // 所有被忽略的字段集合
         Set<String> ignoreProps;
@@ -508,6 +535,7 @@ public class TableOperatorFactory {
         notUpdateProps.add(idPropName);
         dataClassDesc.setNotUpdateProps(notUpdateProps);
         dataClassDesc.setIgnoreProps(ignoreProps);
+        dataClassDesc.setGroupProps(groupProps);
         return dataClassDesc;
     }
 
@@ -578,6 +606,8 @@ public class TableOperatorFactory {
         Set<String> notUpdateProps = new HashSet<>();
         // 所有被忽略的字段集合
         Set<String> ignoreProps = new HashSet<>();
+        // 所有分组字段
+        Set<String> groupProps = new HashSet<>();
 
         // id字段的名称
         String idPropName = null;
@@ -657,6 +687,9 @@ public class TableOperatorFactory {
                     if (fieldDesc.isNotUpdate()) {
                         notUpdateProps.add(propName);
                     }
+                    if (fieldDesc.isGroup()) {
+                        groupProps.add(propName);
+                    }
                     if (fieldDesc.columnType().length() == 0) {
                         columnType = getColumnTypeByJavaType(fieldType);
                     } else {
@@ -710,6 +743,7 @@ public class TableOperatorFactory {
         notUpdateProps.add(idPropName);
         dataClassDesc.setNotUpdateProps(notUpdateProps.isEmpty() ? Collections.emptySet() : notUpdateProps);
         dataClassDesc.setIgnoreProps(ignoreProps.isEmpty() ? Collections.emptySet() : ignoreProps);
+        dataClassDesc.setGroupProps(groupProps.isEmpty() ? Collections.emptySet() : groupProps);
         return dataClassDesc;
     }
 
@@ -918,6 +952,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return completelyOperator.selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+            }
+
+            @Override
             public void insert(Object o) {
                 completelyOperator.insert(o);
             }
@@ -974,6 +1013,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectByUniqueName(String uniqueName, Object o) {
                 return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
+                return completelyOperator.selectByGroupField(fieldName, fieldValue);
             }
 
             @Override
@@ -1112,6 +1156,7 @@ public class TableOperatorFactory {
             @Override
             public void delete(Object object) {
                 Comparable id = getIdValueFromObject(classDesc, object);
+                assert id != null : new SscRuntimeException("删除数据时，id不可为null, class:" + clazz.getName());
                 int tableIndex = getTableIndex(classDesc, object, id);
                 delete(id, tableIndex);
             }
@@ -1286,6 +1331,33 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
+                String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
+                String sql = sscTableInfo.getUnionSelectByGroupFieldSql().get(propName);
+                assert sql != null : new SscRuntimeException(String.format("class:%s 未知的分组字段名称：%s", classDesc.getDataClass().getName(), fieldName));
+                // 执行sql
+                log.debug("执行查询语句(selectByGroupField)：%s, fieldName:%s, fieldValue:%s", sql, fieldName, fieldValue);
+                return jdbcTemplate.query(sql, getRowMapper(), fieldValue);
+            }
+
+            @Override
+            public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
+                if (propName.equals(classDesc.getTableSplitField())) {
+                    return selectByTableSplitField(tableSplitFieldValue);
+                }
+                String[] sqlArray = sscTableInfo.getSelectByGroupFieldSql().get(propName);
+                assert sqlArray != null : new SscRuntimeException("未能找到该字段对应的sql，fieldName: " + fieldName);
+                // 根据分表字段获取对应的表的索引
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sqlArray[tableIndex];
+                // 执行sql
+                log.debug("执行查询语句(selectByGroupField)：%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
+                        sql, tableSplitFieldValue, fieldName, fieldValue);
+                return jdbcTemplate.query(sql, getRowMapper(), fieldValue);
+            }
+
+            @Override
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
@@ -1375,6 +1447,8 @@ public class TableOperatorFactory {
                             addUniqueValueCache(classDesc, object, c);
                             // 尝试添加分表字段缓存
                             addTableSplitFieldCache(classDesc, id, tableSplitFieldValue, newStatus.isDelete());
+                            // 尝试添加分组字段缓存
+                            addGroupFieldCache(classDesc, id, object, c, newStatus.isDelete());
                         }
                     }
                     // 当前状态
@@ -1490,6 +1564,7 @@ public class TableOperatorFactory {
                     return objectInstance;
                 }
             }
+
             @Override
             public T selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, T> insertFunction) {
                 if (!getSwitch) {
@@ -1714,6 +1789,28 @@ public class TableOperatorFactory {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
+            private List<Comparable> getIdListFromDbByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                ArrayList<Comparable> idList = new ArrayList<>();
+                List<T> dataList;
+                if (tableSplitFieldValue == null) {
+                    dataList = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(fieldName, fieldValue);
+                } else {
+                    dataList = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+                }
+                if (dataList != null) {
+                    for (T data : dataList) {
+                        Comparable idValue = getIdValueFromObject(classDesc, data);
+                        if (idValue == null) {
+                            continue;
+                        }
+                        idList.add(idValue);
+                        // 添加id缓存
+                        insertOrUpDateOrDelete(dataClass, idValue, tableSplitFieldValue, data, CacheStatus.AFTER_INSERT);
+                    }
+                }
+                return idList;
+            }
+
             private List<Comparable> getIdListFromDb(Comparable tableSplitFieldValue) {
                 ArrayList<Comparable> idList = new ArrayList<>();
                 List<T> dataList = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByTableSplitField(tableSplitFieldValue);
@@ -1744,6 +1841,36 @@ public class TableOperatorFactory {
                 }
                 cache.setLastUseTime(System.currentTimeMillis());
                 return (List<T1>) cache.getIdList();
+            }
+
+            private ObjectListCache getCacheFromMapByGroupField(Map<Comparable, ObjectListCache> cacheMap, Comparable tableSplitFieldValue,
+                                                                String fieldName, Comparable fieldValue) {
+                ObjectListCache cache = cacheMap.get(fieldValue);
+                List<Comparable> idListFromDb;
+                if (cache == null) {
+                    // 这里调用一下这个方法，该方法会创建新的 ObjectListCache
+                    idListFromDb = getIdListFromDbByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+                    cache = cacheMap.get(fieldValue);
+                    if (cache == null) {
+                        return null;
+                    }
+                } else {
+                    idListFromDb = null;
+                }
+                if (CacheStatus.AFTER_INSERT.equals(cache.getCacheStatus())) {
+                    // 缓存对象是新创建的，需要把从数据库中查到的id加进来
+                    cache.setCacheStatus(CacheStatus.AFTER_UPDATE);
+                    List<Comparable> idList = cache.getIdList();
+                    if (idListFromDb == null) {
+                        idListFromDb = getIdListFromDbByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+                    }
+                    idListFromDb.forEach(idInList -> {
+                        if (! idList.contains(idInList)) {
+                            idList.add(idInList);
+                        }
+                    });
+                }
+                return cache;
             }
 
             private ObjectListCache getCacheFromMap(Map<Comparable, ObjectListCache> cacheMap, Comparable tableSplitFieldValue) {
@@ -1802,11 +1929,75 @@ public class TableOperatorFactory {
                 return dataList;
             }
 
+
+            @Override
+            public List<T> selectByGroupField(String fieldName, Comparable fieldValue) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, fieldName:%s, fieldValue:%s",
+                            dataClass.getName(), fieldName, fieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(fieldName, fieldValue);
+                }
+                String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
+                Map<Comparable, ObjectListCache> cacheMap = groupFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(propName, k2 -> new ConcurrentHashMap<>());
+                ObjectListCache cache = getCacheFromMapByGroupField(cacheMap, null, fieldName, fieldValue);
+                if (cache == null) {
+                    log.debug("未找到缓存(selectByGroupField)，直接查询数据库, class:%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
+                            dataClass.getName(), fieldName, fieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(fieldName, fieldValue);
+                }
+                cache.setLastUseTime(System.currentTimeMillis());
+                List<Comparable> idList = cache.getIdList();
+                List<T> dataList = new ArrayList<>(idList.size());
+                for (Comparable idValue : idList) {
+                    // 根据id去查询对应的数据
+                    T data = selectById(idValue);
+                    if (data == null) {
+                        continue;
+                    }
+                    dataList.add(data);
+                }
+                return dataList;
+            }
+
+            @Override
+            public List<T> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
+                            dataClass.getName(), tableSplitFieldValue, fieldName, fieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+                }
+                String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
+                Map<Comparable, ObjectListCache> cacheMap = groupFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(propName, k2 -> new ConcurrentHashMap<>());
+                ObjectListCache cache = getCacheFromMapByGroupField(cacheMap, tableSplitFieldValue, fieldName, fieldValue);
+                if (cache == null) {
+                    log.debug("未找到缓存(selectByGroupField)，直接查询数据库, class:%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
+                            dataClass.getName(), tableSplitFieldValue, fieldName, fieldValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+                }
+                cache.setLastUseTime(System.currentTimeMillis());
+                List<Comparable> idList = cache.getIdList();
+                List<T> dataList = new ArrayList<>(idList.size());
+                for (Comparable idValue : idList) {
+                    // 根据id去查询对应的数据
+                    T data = selectById(idValue, tableSplitFieldValue);
+                    if (data == null) {
+                        continue;
+                    }
+                    dataList.add(data);
+                }
+                return dataList;
+            }
+
             @Override
             public JdbcTemplate getJdbcTemplate() {
                 return jdbcTemplate;
             }
         };
+
     }
 
     public <T> Operator<T> getOperator(Class<T> dataClass) {
@@ -1837,6 +2028,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectByUniqueName(String uniqueName, Object o) {
                 return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
+                return completelyOperator.selectByGroupField(fieldName, fieldValue);
             }
 
             @Override
@@ -1948,10 +2144,57 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return completelyOperator.selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+            }
+
+            @Override
             public JdbcTemplate getJdbcTemplate() {
                 return completelyOperator.getJdbcTemplate();
             }
         }) : getNoCachedSpecialOperator(dataClass, sscTableInfo);
+    }
+
+    private void addGroupFieldCache(DataClassDesc classDesc, Comparable id, Object object, ObjectInstanceCache cache, boolean delete) {
+        Class<?> dataClass = classDesc.getDataClass();
+        Map<String, String> columnPropMapping = classDesc.getColumnPropMapping();
+        for (String groupPropName : classDesc.getGroupProps()) {
+            String propName = columnPropMapping.getOrDefault(groupPropName, groupPropName);
+            Map<Comparable, ObjectListCache> cacheMap = groupFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>())
+                    .computeIfAbsent(propName, k2 -> new ConcurrentHashMap<>());
+            // 从对象中新获取的分组字段的值
+            Comparable newFieldValue = getFieldValueFromObjectOrDefault(classDesc, propName, object, NullObject.INSTANCE);
+            if (delete) {
+                // 本次为删除操作
+                ObjectListCache objectListCache = cacheMap.get(newFieldValue);
+                // 如果缓存不存在，就不操作
+                if (objectListCache != null) {
+                    objectListCache.getIdList().remove(id);
+                }
+            } else {
+                cacheMap.computeIfAbsent(newFieldValue, k2 -> {
+                    ObjectListCache objectListCache = new ObjectListCache();
+                    objectListCache.setIdList(Collections.synchronizedList(new ArrayList<>()));
+                    // 这里仅仅作为标记，并不代表缓存的状态
+                    objectListCache.setCacheStatus(CacheStatus.AFTER_INSERT);
+                    return objectListCache;
+                }).getIdList().add(id);
+            }
+            // 该缓存中旧有分组字段的值
+            Comparable oldFieldValue = cache.getGroupFieldValue(propName);
+            // 新旧两个对象是否相等
+            boolean equals = SscStringUtils.objectEquals(oldFieldValue, newFieldValue);
+            // 分组字段发生了改变，旧的缓存中也将该id删除
+            if (! equals) {
+                // 重新设置分组字段的值
+                cache.setGroupFieldValue(propName, newFieldValue);
+                ObjectListCache objectListCache = cacheMap.get(oldFieldValue);
+                // 如果缓存不存在，就不操作
+                if (objectListCache != null) {
+                    objectListCache.getIdList().remove(id);
+                }
+            }
+        }
     }
 
     private void addTableSplitFieldCache(DataClassDesc classDesc, Comparable id, Comparable tableSplitFieldValue, boolean delete) {
@@ -2199,6 +2442,19 @@ public class TableOperatorFactory {
         } catch (Exception e) {
             throw new SscRuntimeException(String.format("Insert error! operator class: %s, value: %s", operator.getClass().getName(), value), e);
         }
+    }
+
+    /**
+     * 从数据对象中获取指定字段名称的字段的值
+     *
+     * @param classDesc 类的描述封装对象
+     * @param propName  类属性名称
+     * @param object    数据对象
+     * @return 属性的值
+     */
+    private <T> T getFieldValueFromObjectOrDefault(DataClassDesc classDesc, String propName, Object object, T defaultValue) {
+        Object value = getFieldValueFromObject(classDesc, propName, object);
+        return value == null ? defaultValue : (T) value;
     }
 
     /**

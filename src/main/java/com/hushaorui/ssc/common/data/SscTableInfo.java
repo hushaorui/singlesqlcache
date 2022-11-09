@@ -26,6 +26,9 @@ public abstract class SscTableInfo {
     protected String[] selectByIdSql;
     /** 根据分表字段查询(每种数据只能有一个分表字段) */
     protected String[] selectByTableSplitFieldSql;
+    /** 根据分组字段查询 */
+    protected Map<String, String[]> selectByGroupFieldSql;
+    protected Map<String, String> unionSelectByGroupFieldSql;
     /** 根据分表字段查询(每种数据只能有一个分表字段) */
     protected String[] selectIdByTableSplitFieldSql;
 
@@ -73,6 +76,15 @@ public abstract class SscTableInfo {
     public String[] getSelectByTableSplitFieldSql() {
         return selectByTableSplitFieldSql;
     }
+
+    public Map<String, String[]> getSelectByGroupFieldSql() {
+        return selectByGroupFieldSql;
+    }
+
+    public Map<String, String> getUnionSelectByGroupFieldSql() {
+        return unionSelectByGroupFieldSql;
+    }
+
     public String[] getSelectIdByTableSplitFieldSql() {
         return selectIdByTableSplitFieldSql;
     }

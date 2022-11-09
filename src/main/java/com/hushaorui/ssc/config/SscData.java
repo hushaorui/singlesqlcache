@@ -46,6 +46,7 @@ public class SscData {
             sscField.ignore = classDesc.getIgnoreProps().contains(propName);
             sscField.notNull = classDesc.getNotNullProps().contains(propName);
             sscField.notUpdate = classDesc.getNotUpdateProps().contains(propName);
+            sscField.group = classDesc.getGroupProps().contains(propName);
             fieldMap.put(propName, sscField);
         }
         return sscData;

@@ -48,6 +48,8 @@ public class SscTableInfoMysql extends SscTableInfo {
         String[] selectByIdSql = new String[tableCount];
         String[] selectByTableSplitFieldSql = new String[tableCount];
         String[] selectIdByTableSplitFieldSql = new String[tableCount];
+        Map<String, String[]> selectByGroupFieldSql = new HashMap<>();
+        Map<String, StringBuilder> unionSelectByGroupFieldSql = new HashMap<>();
         Map<String, StringBuilder> selectByUniqueKeySqlMap = new HashMap<>();
 
         String[] updateAllNotCachedByIdSql = new String[tableCount];
@@ -176,6 +178,20 @@ public class SscTableInfoMysql extends SscTableInfo {
                 selectByTableSplitFieldSql[i] = String.format("select * from %s where %s = ?", realTableName, classDesc.getColumnByProp(tableSplitField));
                 selectIdByTableSplitFieldSql[i] = String.format("select %s from %s where %s = ?", idColumnName, realTableName, classDesc.getColumnByProp(tableSplitField));
             }
+            final int tableIndex = i;
+            classDesc.getGroupProps().forEach(groupedField -> {
+                if (groupedField.equals(tableSplitField)) {
+                    // 分表字段不应该再另起一个缓存
+                    return;
+                }
+                String tempSql = String.format("select * from %s where %s = ?", realTableName, classDesc.getColumnByProp(groupedField));
+                selectByGroupFieldSql.computeIfAbsent(groupedField, k -> new String[tableCount])[tableIndex] = tempSql;
+                StringBuilder builder = unionSelectByGroupFieldSql.computeIfAbsent(groupedField, k -> new StringBuilder());
+                if (builder.length() > 0) {
+                    builder.append("\n union all \n");
+                }
+                builder.append(tempSql);
+            });
 
             deleteByIdSql[i] = String.format("delete from %s where %s = ?", realTableName, idColumnName);
 
@@ -214,6 +230,11 @@ public class SscTableInfoMysql extends SscTableInfo {
         this.selectByIdSql = selectByIdSql;
         this.selectByTableSplitFieldSql = selectByTableSplitFieldSql;
         this.selectIdByTableSplitFieldSql = selectIdByTableSplitFieldSql;
+        this.selectByGroupFieldSql = selectByGroupFieldSql;
+        this.unionSelectByGroupFieldSql = new HashMap<>();
+        unionSelectByGroupFieldSql.forEach((k, v) -> {
+            this.unionSelectByGroupFieldSql.put(k, v.toString());
+        });
         Map<String, String> selectByUniqueKeySql = new HashMap<>();
         selectByUniqueKeySqlMap.forEach((key, value) -> selectByUniqueKeySql.put(key, value.toString()));
         this.selectByUniqueKeySql = selectByUniqueKeySql;

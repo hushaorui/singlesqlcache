@@ -134,4 +134,18 @@ public abstract class SscStringUtils {
             return null;
         }
     }
+
+    /**
+     * 比较两个对象
+     * @param object1 对象1
+     * @param object2 对象2
+     * @return 是否相等
+     */
+    public static boolean objectEquals(Object object1, Object object2) {
+        if (object1 == null) {
+            return object2 == null;
+        } else {
+            return object1.equals(object2);
+        }
+    }
 }

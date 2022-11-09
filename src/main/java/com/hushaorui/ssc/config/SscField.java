@@ -13,4 +13,6 @@ public class SscField {
     public boolean notUpdate;
     /** 是否忽略该字段，默认：false */
     public boolean ignore;
+    /** 是否是分组字段 */
+    public boolean group;
 }

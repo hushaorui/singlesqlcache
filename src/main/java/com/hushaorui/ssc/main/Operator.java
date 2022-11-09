@@ -1,5 +1,6 @@
 package com.hushaorui.ssc.main;
 
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -35,4 +36,11 @@ public interface Operator<DATA> extends BaseOperator<DATA> {
      */
     DATA selectByUniqueName(String uniqueName, DATA data);
 
+    /**
+     * 根据分组字段查询
+     * @param fieldName 分组字段名
+     * @param fieldValue 字段值
+     * @return
+     */
+    List<DATA> selectByGroupField(String fieldName, Comparable fieldValue);
 }

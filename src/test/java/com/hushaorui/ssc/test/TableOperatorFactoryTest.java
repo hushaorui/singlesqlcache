@@ -527,4 +527,51 @@ public class TableOperatorFactoryTest {
             e.printStackTrace();
         }
     }
+
+    @Test
+    public void test_MiniGame_selectByGroup() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            List<TestMiniGame> testMiniGames = operator.selectByGroupField(100L, "data", "data0");
+            System.out.println(JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_MiniGame_insert_and_selectByGroup() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            {
+                // 先插入，再查询
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setUserId(100L);
+                testMiniGame.setData("data0");
+                operator.insert(testMiniGame);
+            }
+            List<TestMiniGame> testMiniGames = operator.selectByGroupField(100L, "data", "data0");
+            System.out.println(JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    @Test
+    public void test_MiniGame_delete_and_selectByGroup() {
+        try {
+            SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
+            {
+                // 先插入，再查询
+                TestMiniGame testMiniGame = new TestMiniGame();
+                testMiniGame.setGameId(7L);
+                testMiniGame.setUserId(100L);
+                testMiniGame.setData("data0");
+                operator.delete(testMiniGame);
+            }
+            List<TestMiniGame> testMiniGames = operator.selectByGroupField(100L, "data", "data0");
+            System.out.println(JSONArray.toJSONString(testMiniGames));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }

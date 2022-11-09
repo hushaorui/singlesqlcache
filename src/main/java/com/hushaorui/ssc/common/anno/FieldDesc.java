@@ -18,6 +18,8 @@ public @interface FieldDesc {
     boolean isId() default false;
     /** 忽略该字段，字段不保存进数据库 */
     boolean ignore() default false;
+    /** 是否为分组字段，可根据该字段进行查询 */
+    boolean isGroup() default false;
     /** 字段不允许为null */
     boolean isNotNull() default false;
     /** 数据库字段默认值，如果为空字符串，请填写\"\" */

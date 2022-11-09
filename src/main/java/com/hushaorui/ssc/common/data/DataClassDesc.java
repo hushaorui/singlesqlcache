@@ -35,6 +35,8 @@ public class DataClassDesc extends CommonClassDesc {
     private Set<String> notUpdateProps;
     /** 所有忽略的字段集合 */
     private Set<String> ignoreProps;
+    /** 分组字段 */
+    private Set<String> groupProps;
 
     /** id字段的名称 */
     private String idPropName;
@@ -126,8 +128,16 @@ public class DataClassDesc extends CommonClassDesc {
         return notUpdateProps;
     }
 
+    public Set<String> getGroupProps() {
+        return groupProps;
+    }
+
     public void setNotUpdateProps(Set<String> notUpdateProps) {
         this.notUpdateProps = notUpdateProps;
+    }
+
+    public void setGroupProps(Set<String> groupProps) {
+        this.groupProps = groupProps;
     }
 
     public Set<String> getIgnoreProps() {
@@ -178,6 +188,7 @@ public class DataClassDesc extends CommonClassDesc {
         Set<String> ignoreProps = new HashSet<>();
         Set<String> notNullProps = new HashSet<>();
         Set<String> notUpdateProps = new HashSet<>();
+        Set<String> groupProps = new HashSet<>();
         if (classDesc.tableSplitField != null) {
             // 分表字段不能为null，也不能更新
             notNullProps.add(classDesc.getTableSplitField());
@@ -199,6 +210,9 @@ public class DataClassDesc extends CommonClassDesc {
                 if (field.notUpdate) {
                     notUpdateProps.add(propName);
                 }
+                if (field.group) {
+                    groupProps.add(propName);
+                }
             });
         }
         classDesc.setPropColumnMapping(propColumnMapping);
@@ -207,6 +221,7 @@ public class DataClassDesc extends CommonClassDesc {
         classDesc.setIgnoreProps(ignoreProps);
         classDesc.setNotNullProps(notNullProps);
         classDesc.setNotUpdateProps(notUpdateProps);
+        classDesc.setGroupProps(groupProps);
         return classDesc;
     }
 }
