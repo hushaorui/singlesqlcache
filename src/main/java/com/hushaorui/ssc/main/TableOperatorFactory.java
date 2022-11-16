@@ -1514,7 +1514,7 @@ public class TableOperatorFactory {
                     return (T) value;
                 }
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
-                ObjectInstanceCache cache = classMap.get(String.valueOf(id));
+                ObjectInstanceCache cache = classMap.get(id);
                 if (cache == null) {
                     log.debug("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     // 缓存击穿，查询数据库
