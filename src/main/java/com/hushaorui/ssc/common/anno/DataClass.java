@@ -16,4 +16,6 @@ public @interface DataClass {
     boolean cached() default true;
     /** id是否使用自动生成策略，默认使用 */
     boolean isAuto() default true;
+    /** 为true时默认使用全局配置中同名配置值 */
+    boolean appendNumberAtFirstTable() default true;
 }

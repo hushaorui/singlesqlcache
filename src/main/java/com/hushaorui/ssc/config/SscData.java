@@ -17,6 +17,8 @@ public class SscData {
     public String tableSplitField;
     /** 是否启用缓存 */
     public Boolean cached;
+    /** 第一个表是否拼接数字 */
+    public Boolean appendNumberAtFirstTable;
     /** 所有唯一键的字段集合 */
     public Map<String, List<String>> uniqueProps;
     /** id字段的名称 */
@@ -32,6 +34,7 @@ public class SscData {
         sscData.tableCount = classDesc.getTableCount();
         sscData.tableSplitField = classDesc.getTableSplitField();
         sscData.cached = classDesc.isCached();
+        sscData.appendNumberAtFirstTable = classDesc.isAppendNumberAtFirstTable();
         sscData.idPropName = classDesc.getIdPropName();
         sscData.uniqueProps = new HashMap<>();
         classDesc.getUniqueProps().forEach((uniqueName, set) -> sscData.uniqueProps.put(uniqueName, new ArrayList<>(set)));

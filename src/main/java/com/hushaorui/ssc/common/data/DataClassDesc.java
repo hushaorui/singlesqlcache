@@ -18,6 +18,8 @@ public class DataClassDesc extends CommonClassDesc {
     private String tableSplitField;
     /** 是否启用缓存 */
     private boolean cached;
+    /** 第一个表，是否使用数字来拼接表名 */
+    private boolean appendNumberAtFirstTable;
 
     /** 所有的类字段名和表字段名的映射 */
     private Map<String, String> propColumnMapping;
@@ -74,6 +76,14 @@ public class DataClassDesc extends CommonClassDesc {
 
     public void setCached(boolean cached) {
         this.cached = cached;
+    }
+
+    public boolean isAppendNumberAtFirstTable() {
+        return appendNumberAtFirstTable;
+    }
+
+    public void setAppendNumberAtFirstTable(boolean appendNumberAtFirstTable) {
+        this.appendNumberAtFirstTable = appendNumberAtFirstTable;
     }
 
     public Map<String, String> getPropColumnMapping() {
@@ -179,6 +189,7 @@ public class DataClassDesc extends CommonClassDesc {
         data.uniqueProps.forEach((uniqueName, list) -> classDesc.uniqueProps.put(uniqueName, new HashSet<>(list)));
         // 默认为true，启用缓存
         classDesc.cached = data.cached == null ? true : data.cached;
+        classDesc.appendNumberAtFirstTable = data.appendNumberAtFirstTable == null ? true : data.appendNumberAtFirstTable;
         // 默认为true，使用id自动生成策略
         classDesc.useIdGeneratePolicy = data.useIdGeneratePolicy == null ? true : data.useIdGeneratePolicy;
 

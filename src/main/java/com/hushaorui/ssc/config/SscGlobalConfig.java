@@ -37,6 +37,8 @@ public class SscGlobalConfig {
     private String dataSourceType;
     /** java类型和表类型的映射 */
     private Map<Class<?>, String> javaTypeToTableType;
+    /** 第一个表，是否使用数字来拼接表名 */
+    private boolean appendNumberAtFirstTable = true;
     /**
      * @see TableOperatorFactory
      * 是否直接添加程序关闭前的监听(业务很复杂时请关闭，主动调用 beforeShutdown 方法)
@@ -245,5 +247,13 @@ public class SscGlobalConfig {
 
     public void setLogFactory(SscLogFactory logFactory) {
         this.logFactory = logFactory;
+    }
+
+    public boolean isAppendNumberAtFirstTable() {
+        return appendNumberAtFirstTable;
+    }
+
+    public void setAppendNumberAtFirstTable(boolean appendNumberAtFirstTable) {
+        this.appendNumberAtFirstTable = appendNumberAtFirstTable;
     }
 }

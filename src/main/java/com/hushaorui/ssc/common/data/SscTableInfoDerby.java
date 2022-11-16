@@ -14,6 +14,13 @@ public class SscTableInfoDerby extends SscTableInfo {
     public SscTableInfoDerby(DataClassDesc classDesc, SscGlobalConfig config) {
         super(classDesc, config);
         this.classDesc = classDesc;
+        boolean appendNumberAtFirstTable;
+        if (classDesc.isAppendNumberAtFirstTable()) {
+            // 为true是默认值，看全局配置
+            appendNumberAtFirstTable = config.isAppendNumberAtFirstTable();
+        } else {
+            appendNumberAtFirstTable = false;
+        }
         // id属性的名称
         String idPropName = classDesc.getIdPropName();
         // id字段的名字
@@ -71,13 +78,18 @@ public class SscTableInfoDerby extends SscTableInfo {
         for (int i = 0; i < createTableSql.length; i++) {
             StringBuilder create = new StringBuilder("create table ");
             String indexString = String.valueOf(i);
-            StringBuilder realTableNameBuilder = new StringBuilder(classDesc.getTableName()).append("_");
-            for (int j = indexString.length(); j < numberLength; j++) {
-                realTableNameBuilder.append("0");
-            }
-            realTableNameBuilder.append(indexString);
             // 真正的表名
-            String realTableName = realTableNameBuilder.toString();
+            String realTableName;
+            if (i > 0 || appendNumberAtFirstTable) {
+                StringBuilder realTableNameBuilder = new StringBuilder(classDesc.getTableName()).append("_");
+                for (int j = indexString.length(); j < numberLength; j++) {
+                    realTableNameBuilder.append("0");
+                }
+                realTableNameBuilder.append(indexString);
+                realTableName = realTableNameBuilder.toString();
+            } else {
+                realTableName = classDesc.getTableName();
+            }
             tableNames[i] = realTableName;
             create.append(realTableName);
             create.append("(\n");

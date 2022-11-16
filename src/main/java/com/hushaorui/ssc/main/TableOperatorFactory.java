@@ -548,6 +548,8 @@ public class TableOperatorFactory {
         String tableSplitField;
         // 是否启用缓存
         boolean cached;
+        // 第一个表是否拼接数字
+        boolean appendNumberAtFirstTable;
         DataClass annotation = clazz.getDeclaredAnnotation(DataClass.class);
         // 表名
         String tableName;
@@ -559,6 +561,8 @@ public class TableOperatorFactory {
             tableName = generateTableName(clazz);
             // 默认启用缓存
             cached = true;
+            // 默认放弃决定，看全局配置
+            appendNumberAtFirstTable = true;
             // 默认id使用自动生成策略
             idIsAuto = true;
             // 默认使用id作为分表字段，这里不需指定
@@ -566,6 +570,7 @@ public class TableOperatorFactory {
         } else {
             tableCount = annotation.tableCount();
             cached = annotation.cached();
+            appendNumberAtFirstTable = annotation.appendNumberAtFirstTable();
             idIsAuto = annotation.isAuto();
             String value = annotation.value();
             if (value.length() == 0) {
@@ -729,6 +734,7 @@ public class TableOperatorFactory {
         }
         dataClassDesc.setTableName(tableName);
         dataClassDesc.setCached(cached);
+        dataClassDesc.setAppendNumberAtFirstTable(appendNumberAtFirstTable);
         dataClassDesc.setColumnPropMapping(columnPropMapping.isEmpty() ? Collections.emptyMap() : columnPropMapping);
         dataClassDesc.setPropColumnMapping(propColumnMapping.isEmpty() ? Collections.emptyMap() : propColumnMapping);
         dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping.isEmpty() ? Collections.emptyMap() : propColumnTypeMapping);
