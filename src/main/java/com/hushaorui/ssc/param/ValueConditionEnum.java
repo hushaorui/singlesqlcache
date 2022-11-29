@@ -8,13 +8,15 @@ public enum ValueConditionEnum {
     ValueBetween(ValueBetween.class, " between", " between ? and ?"),
     ValueGreatOrEqual(ValueGreatOrEqual.class, " >=", " >= ?"),
     ValueGreatThan(ValueGreatThan.class, " >", " > ?"),
-    ValueIn(ValueIn.class, " in", ""),
+    ValueIn(ValueIn.class, " in ", ""),
+    ValueIsNotIn(ValueIsNotIn.class, " not in ", ""),
     ValueIsNotNull(ValueIsNotNull.class, " is not null", " is not null"),
     ValueIsNull(ValueIsNull.class, " is null", " is null"),
     ValueLessOrEqual(ValueLessOrEqual.class, " <=", " <= ?"),
     ValueLessThan(ValueLessThan.class, " <", " < ?"),
     ValueLike(ValueLike.class, " like", " like ?"),
-    Equal(Object.class, "", " = ?"),
+    ValueEqual(Object.class, "", " = ?"),
+    ValueIsNot(ValueIsNot.class, "!=", " != ?"),
     FirstResult(ValueFirstResult.class, "^", ""),
     MaxResult(ValueMaxResult.class, "$", ""),
     ;
@@ -40,20 +42,20 @@ public enum ValueConditionEnum {
 
     public static String getKeyString(Object object) {
         if (object == null) {
-            return Equal.keyString;
+            return ValueEqual.keyString;
         }
         if ((object instanceof SpecialValue) && ((SpecialValue) object).getValue() == null) {
             // 如果是封装后的对象，里面的值是null，则该条件失效
             return "";
         }
-        return mapping.getOrDefault(object.getClass(), Equal).keyString;
+        return mapping.getOrDefault(object.getClass(), ValueEqual).keyString;
     }
 
     public static String getSqlString(Object object) {
         if (object == null) {
-            return Equal.sqlString;
+            return ValueEqual.sqlString;
         }
-        return mapping.getOrDefault(object.getClass(), Equal).sqlString;
+        return mapping.getOrDefault(object.getClass(), ValueEqual).sqlString;
     }
 
     public Class<?> getClazz() {

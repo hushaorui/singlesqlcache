@@ -194,17 +194,27 @@ public abstract class SscTableInfo {
             for (Pair<String, Object> pair : conditions) {
                 Object value = pair.getValue();
                 if (value instanceof ValueIn) {
+                    boolean isNot = value instanceof ValueIsNotIn;
                     ValueIn<Object> valueIn = (ValueIn<Object>) value;
                     Collection<Object> values = valueIn.getValues();
                     if (i == 0) {
                         String columnName = classDesc.getColumnByProp(pair.getKey());
-                        String oldString = columnName + " in (?)";
+                        String oldString;
+                        if (isNot) {
+                            oldString = columnName + " not in (?)";
+                        } else {
+                            oldString = columnName + " in (?)";
+                        }
                         if (values == null || values.isEmpty()) {
                             // 该条件不存在
                             sql = sql.replace(oldString, "");
                         } else if (values.size() > 1) {
                             StringBuilder newString = new StringBuilder(columnName);
-                            newString.append(" in (");
+                            if (isNot) {
+                                newString.append(" not in (");
+                            } else {
+                                newString.append(" in (");
+                            }
                             int loopCount = values.size() - 1;
                             for (int count = 0; count < loopCount; count ++) {
                                 newString.append("? ,");
@@ -349,6 +359,7 @@ public abstract class SscTableInfo {
         for (Pair<String, Object> pair : conditions) {
             Object value = pair.getValue();
             if (value instanceof ValueIn) {
+                boolean isNot = value instanceof ValueIsNotIn;
                 if (notFirst) {
                     builder.append(AND_STRING);
                 } else {
@@ -356,7 +367,11 @@ public abstract class SscTableInfo {
                 }
                 notFirst = true;
                 builder.append(classDesc.getColumnByProp(pair.getKey()));
-                builder.append(" in (");
+                if (isNot) {
+                    builder.append(" not in (");
+                } else {
+                    builder.append(" in (");
+                }
                 ValueIn<Object> valueIn = (ValueIn) value;
                 Iterator<Object> it = valueIn.getValues().iterator();
                 while (it.hasNext()) {
