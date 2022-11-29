@@ -1,6 +1,6 @@
 package com.hushaorui.ssc.main;
 
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Arrays;
@@ -41,7 +41,7 @@ public interface BaseOperator<DATA> {
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
-    default List<DATA> selectByCondition(Pair<String, Object>... conditions) {
+    default List<DATA> selectByCondition(TwinsValue<String, Object>... conditions) {
         List<DATA> result;
         if (conditions == null || conditions.length == 0) {
             result = selectByCondition(Collections.emptyList());
@@ -56,14 +56,14 @@ public interface BaseOperator<DATA> {
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
-    List<DATA> selectByCondition(List<Pair<String, Object>> conditions);
+    List<DATA> selectByCondition(List<TwinsValue<String, Object>> conditions);
 
     /**
      * 根据条件查询id
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return id集合
      */
-    <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions);
+    <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions);
 
     /**
      * 根据条件查询id
@@ -77,7 +77,7 @@ public interface BaseOperator<DATA> {
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return id集合
      */
-    default <T> List<T> selectIdByCondition(Pair<String, Object>... conditions) {
+    default <T> List<T> selectIdByCondition(TwinsValue<String, Object>... conditions) {
         if (conditions == null) {
             return selectIdByCondition(Collections.emptyList());
         }
@@ -89,7 +89,7 @@ public interface BaseOperator<DATA> {
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
-    int countByCondition(List<Pair<String, Object>> conditions);
+    int countByCondition(List<TwinsValue<String, Object>> conditions);
 
     /**
      * 根据条件查询数据的总数
@@ -103,7 +103,7 @@ public interface BaseOperator<DATA> {
      * @param conditions 条件集合 key: 类属性名或表字段名 ,value: 值
      * @return 数据集合
      */
-    default int countByCondition(Pair<String, Object>... conditions) {
+    default int countByCondition(TwinsValue<String, Object>... conditions) {
         if (conditions == null) {
             return countByCondition(Collections.emptyList());
         }

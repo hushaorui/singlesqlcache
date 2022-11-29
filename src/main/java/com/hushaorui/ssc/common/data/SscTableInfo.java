@@ -2,7 +2,7 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.param.*;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -133,7 +133,7 @@ public abstract class SscTableInfo {
      * @param conditions 属性名或字段名集合(可混合)
      * @return 查询sql
      */
-    public SscSqlResult getNoCachedSelectConditionSql(String key, List<Pair<String, Object>> conditions) {
+    public SscSqlResult getNoCachedSelectConditionSql(String key, List<TwinsValue<String, Object>> conditions) {
         if (noCachedSelectByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectByConditionSql == null) {
@@ -150,7 +150,7 @@ public abstract class SscTableInfo {
     }
 
 
-    public SscSqlResult getNoCachedCountConditionSql(String key, List<Pair<String, Object>> conditions) {
+    public SscSqlResult getNoCachedCountConditionSql(String key, List<TwinsValue<String, Object>> conditions) {
         if (noCachedCountByConditionSql == null) {
             synchronized (this) {
                 if (noCachedCountByConditionSql == null) {
@@ -166,7 +166,7 @@ public abstract class SscTableInfo {
         return getParamsAndSql(sql, conditions);
     }
 
-    public SscSqlResult getNoCachedSelectIdConditionSql(String key, List<Pair<String, Object>> conditions) {
+    public SscSqlResult getNoCachedSelectIdConditionSql(String key, List<TwinsValue<String, Object>> conditions) {
         if (noCachedSelectIdByConditionSql == null) {
             synchronized (this) {
                 if (noCachedSelectIdByConditionSql == null) {
@@ -182,7 +182,7 @@ public abstract class SscTableInfo {
         return getParamsAndSql(sql, conditions);
     }
 
-    protected SscSqlResult getParamsAndSql(String sql, List<Pair<String, Object>> conditions) {
+    protected SscSqlResult getParamsAndSql(String sql, List<TwinsValue<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return new SscSqlResult(sql, Collections.emptyList());
         }
@@ -191,7 +191,7 @@ public abstract class SscTableInfo {
         // 根据 sscResult 和 conditions，获得params
         List<Object> params = new ArrayList<>();
         for (int i = 0; i < tableNames.length; i ++) {
-            for (Pair<String, Object> pair : conditions) {
+            for (TwinsValue<String, Object> pair : conditions) {
                 Object value = pair.getValue();
                 if (value instanceof ValueIn) {
                     boolean isNot = value instanceof ValueIsNotIn;
@@ -258,14 +258,14 @@ public abstract class SscTableInfo {
         return new SscSqlResult(sql, params);
     }
 
-    public String getKeyByConditionList(List<Pair<String, Object>> conditions) {
+    public String getKeyByConditionList(List<TwinsValue<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
         StringBuilder key = new StringBuilder();
         for (int i = 0; i < conditions.size(); i++) {
             // 统一使用 columnName
-            Pair<String, Object> pair = conditions.get(i);
+            TwinsValue<String, Object> pair = conditions.get(i);
             String columnName = classDesc.getColumnByProp(pair.getKey());
             Object value = pair.getValue();
             key.append(ValueConditionEnum.getKeyString(value));
@@ -297,7 +297,7 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
-    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<Pair<String, Object>> conditions, int sqlType) {
+    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<TwinsValue<String, Object>> conditions, int sqlType) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
         List<Object> paramList = new ArrayList<>();
@@ -350,13 +350,13 @@ public abstract class SscTableInfo {
         return sscSqlResult;
     }
 
-    private StringBuilder iteratorConditions(List<Pair<String, Object>> conditions, SscResult sscResult) {
+    private StringBuilder iteratorConditions(List<TwinsValue<String, Object>> conditions, SscResult sscResult) {
         StringBuilder builder = new StringBuilder();
         if (conditions == null) {
             return builder;
         }
         boolean notFirst = false;
-        for (Pair<String, Object> pair : conditions) {
+        for (TwinsValue<String, Object> pair : conditions) {
             Object value = pair.getValue();
             if (value instanceof ValueIn) {
                 boolean isNot = value instanceof ValueIsNotIn;

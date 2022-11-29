@@ -2,6 +2,7 @@ package com.hushaorui.ssc.test;
 
 import com.alibaba.druid.pool.DruidDataSource;
 import com.alibaba.fastjson.JSONArray;
+import com.hushaorui.ssc.common.TwinsValue;
 import com.hushaorui.ssc.common.data.ColumnMetaData;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
@@ -9,9 +10,9 @@ import com.hushaorui.ssc.main.Operator;
 import com.hushaorui.ssc.main.SpecialOperator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.param.*;
+import com.hushaorui.ssc.test.common.CommonResource;
 import com.hushaorui.ssc.test.common.TestMiniGame;
 import com.hushaorui.ssc.test.common.TestPlayer;
-import javafx.util.Pair;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -190,8 +191,8 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_1() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            Pair<String, Object> condition1 = new Pair<>("username", "张三1");
-            Pair<String, Object> condition2 = new Pair<>("third_type", "morlia1");
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("username", "张三1");
+            TwinsValue<String, Object> condition2 = new TwinsValue<>("third_type", "morlia1");
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1, condition2);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1, condition2);
@@ -210,9 +211,9 @@ public class TableOperatorFactoryTest {
             ids.add(5L);
             ids.add(6L);
             ids.add(10L);
-            Pair<String, Object> condition1 = new Pair<>("userId", new ValueIn<>(ids));
-            Pair<String, Object> condition2 = new Pair<>("firstResult", new ValueFirstResult(0));
-            Pair<String, Object> condition3 = new Pair<>("maxResult", new ValueMaxResult(3));
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("userId", new ValueIn<>(ids));
+            TwinsValue<String, Object> condition2 = new TwinsValue<>("firstResult", new ValueFirstResult(0));
+            TwinsValue<String, Object> condition3 = new TwinsValue<>("maxResult", new ValueMaxResult(3));
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1, condition2, condition3);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1, condition2, condition3);
@@ -226,7 +227,7 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueIsNotNull() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            Pair<String, Object> condition1 = new Pair<>("lastLoginIp", ValueIsNotNull.IS_NOT_NULL);
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("lastLoginIp", ValueIsNotNull.IS_NOT_NULL);
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1);
@@ -240,7 +241,7 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueIsNull() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            Pair<String, Object> condition1 = new Pair<>("lastLoginIp", ValueIsNull.IS_NULL);
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("lastLoginIp", ValueIsNull.IS_NULL);
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1);
@@ -254,7 +255,7 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueGreatThan() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            Pair<String, Object> condition1 = new Pair<>("user_id", new ValueGreatThan<>(5L));
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("user_id", new ValueGreatThan<>(5L));
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1);
@@ -268,7 +269,7 @@ public class TableOperatorFactoryTest {
     public void test_selectByCondition_ValueBetween() {
         try {
             Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-            Pair<String, Object> condition1 = new Pair<>("user_id", new ValueBetween<>(5L, 6L));
+            TwinsValue<String, Object> condition1 = new TwinsValue<>("user_id", new ValueBetween<>(5L, 6L));
             List<TestPlayer> testPlayers = operator.selectByCondition(condition1);
             System.out.println(jsonSerializer.toJsonString(testPlayers));
             testPlayers = operator.selectByCondition(condition1);
@@ -341,9 +342,9 @@ public class TableOperatorFactoryTest {
     @Test
     public void test_limit() {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-        List<Pair<String, Object>> conditions = new ArrayList<>();
-        conditions.add(new Pair<>("", new ValueFirstResult(0)));
-        conditions.add(new Pair<>("", new ValueMaxResult(4)));
+        List<TwinsValue<String, Object>> conditions = new ArrayList<>();
+        conditions.add(new TwinsValue<>("", new ValueFirstResult(0)));
+        conditions.add(new TwinsValue<>("", new ValueMaxResult(4)));
         List<TestPlayer> testPlayers = operator.selectByCondition(conditions);
         testPlayers.forEach(System.out::println);
     }
@@ -351,13 +352,13 @@ public class TableOperatorFactoryTest {
     @Test
     public void test_selectIdByCondition() {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-        List<Pair<String, Object>> conditions = new ArrayList<>();
+        List<TwinsValue<String, Object>> conditions = new ArrayList<>();
         List<Long> ids = new ArrayList<>();
         ids.add(1L);
         ids.add(8L);
-        conditions.add(new Pair<>("userId", new ValueIn<>(ids)));
-        conditions.add(new Pair<>("", new ValueFirstResult(0)));
-        conditions.add(new Pair<>("", new ValueMaxResult(4)));
+        conditions.add(new TwinsValue<>("userId", new ValueIn<>(ids)));
+        conditions.add(new TwinsValue<>("", new ValueFirstResult(0)));
+        conditions.add(new TwinsValue<>("", new ValueMaxResult(4)));
         List<Long> idList = operator.selectIdByCondition(conditions);
         idList.forEach(System.out::println);
     }
@@ -365,13 +366,13 @@ public class TableOperatorFactoryTest {
     @Test
     public void test_countByCondition() {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
-        List<Pair<String, Object>> conditions = new ArrayList<>();
+        List<TwinsValue<String, Object>> conditions = new ArrayList<>();
         /*List<Long> ids = new ArrayList<>();
         ids.add(1L);
         ids.add(8L);
-        conditions.add(new Pair<>("userId", new ValueIn<>(ids)));
-        conditions.add(new Pair<>("", new ValueFirstResult(0)));
-        conditions.add(new Pair<>("", new ValueMaxResult(4)));*/
+        conditions.add(new TwinsValue<>("userId", new ValueIn<>(ids)));
+        conditions.add(new TwinsValue<>("", new ValueFirstResult(0)));
+        conditions.add(new TwinsValue<>("", new ValueMaxResult(4)));*/
         int count = operator.countByCondition(conditions);
         System.out.println(count);
     }
@@ -456,7 +457,7 @@ public class TableOperatorFactoryTest {
     public void test_tableCount_1_limit() {
         try {
             SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
-            List<TestMiniGame> testMiniGames = operator.selectByCondition(new Pair<>("", new ValueFirstResult(0)), new Pair<>("", new ValueMaxResult(1)));
+            List<TestMiniGame> testMiniGames = operator.selectByCondition(new TwinsValue<>("", new ValueFirstResult(0)), new TwinsValue<>("", new ValueMaxResult(1)));
             System.out.println(JSONArray.toJSONString(testMiniGames));
         } catch (Exception e) {
             e.printStackTrace();
@@ -572,6 +573,37 @@ public class TableOperatorFactoryTest {
             System.out.println(JSONArray.toJSONString(testMiniGames));
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_common_resource() {
+        try {
+            Operator<CommonResource> operator = tableOperatorFactory.getOperator(CommonResource.class);
+            List<TwinsValue<String, Object>> conditions = new ArrayList<>();
+            conditions.add(new TwinsValue<>("uploadUserId", 1L));
+            conditions.add(new TwinsValue<>("resourceType", 1));
+            List<Integer> privileges = new ArrayList<>(4);
+            privileges.add(-1);
+            privileges.add(-2);
+            privileges.add(0);
+            conditions.add(new TwinsValue<>("privilegeLevel", new ValueIn<>(privileges)));
+            List<CommonResource> commonResources = operator.selectByCondition(conditions);
+            System.out.println(JSONArray.toJSONString(commonResources));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_ValueIsNot() {
+        Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+        TwinsValue<String, Object> pair = new TwinsValue<>("username", new ValueIsNot<>("张三1"));
+        List<TestPlayer> testPlayers = operator.selectByCondition(pair);
+        if (testPlayers != null) {
+            for (TestPlayer testPlayer : testPlayers) {
+                System.out.println(JSONArray.toJSONString(testPlayer));
+            }
         }
     }
 }

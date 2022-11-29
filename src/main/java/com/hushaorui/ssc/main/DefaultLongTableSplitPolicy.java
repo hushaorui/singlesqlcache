@@ -1,7 +1,7 @@
 package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.config.TableSplitPolicy;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 public class DefaultLongTableSplitPolicy implements TableSplitPolicy<Long> {
     private static TableSplitPolicy<Long> instance;
@@ -22,7 +22,7 @@ public class DefaultLongTableSplitPolicy implements TableSplitPolicy<Long> {
     }
 
     @Override
-    public Pair<Long, Long> getRange() {
-        return new Pair<>(0L, Long.MAX_VALUE);
+    public TwinsValue<Long, Long> getRange() {
+        return new TwinsValue<>(0L, Long.MAX_VALUE);
     }
 }

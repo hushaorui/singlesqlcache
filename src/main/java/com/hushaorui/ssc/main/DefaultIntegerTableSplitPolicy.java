@@ -1,7 +1,7 @@
 package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.config.TableSplitPolicy;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 public class DefaultIntegerTableSplitPolicy implements TableSplitPolicy<Integer> {
     private static TableSplitPolicy<Integer> instance;
@@ -22,7 +22,7 @@ public class DefaultIntegerTableSplitPolicy implements TableSplitPolicy<Integer>
     }
 
     @Override
-    public Pair<Integer, Integer> getRange() {
-        return new Pair<>(0, Integer.MAX_VALUE);
+    public TwinsValue<Integer, Integer> getRange() {
+        return new TwinsValue<>(0, Integer.MAX_VALUE);
     }
 }

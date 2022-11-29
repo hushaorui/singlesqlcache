@@ -9,7 +9,7 @@ import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLogFactory;
 import com.hushaorui.ssc.log.SscLogFactoryImpl;
 import com.hushaorui.ssc.main.*;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -96,7 +96,7 @@ public class SscGlobalConfig {
     private void checkTableSplitPolicyTreeMap(TreeMap<Comparable, TableSplitPolicy<? extends Comparable>> treeMap) {
         Comparable lastValue = null;
         for (TableSplitPolicy<? extends Comparable> policy : treeMap.values()) {
-            Pair<? extends Comparable, ? extends Comparable> policyRange = policy.getRange();
+            TwinsValue<? extends Comparable, ? extends Comparable> policyRange = policy.getRange();
             if (lastValue == null) {
                 lastValue = policyRange.getValue();
             } else {

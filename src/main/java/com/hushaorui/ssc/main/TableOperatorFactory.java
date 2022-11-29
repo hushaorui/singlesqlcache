@@ -10,7 +10,7 @@ import com.hushaorui.ssc.config.*;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLog;
 import com.hushaorui.ssc.util.SscStringUtils;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -978,17 +978,17 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectByCondition(conditions);
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return (List<T>) completelyOperator.selectIdByCondition(conditions);
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.countByCondition(conditions);
             }
 
@@ -1042,17 +1042,17 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectByCondition(conditions);
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectIdByCondition(conditions);
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.countByCondition(conditions);
             }
 
@@ -1287,7 +1287,7 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
@@ -1297,7 +1297,7 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
@@ -1315,7 +1315,7 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 String key = sscTableInfo.getKeyByConditionList(conditions);
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
@@ -1781,17 +1781,17 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<T> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<T> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByCondition(conditions);
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).countByCondition(conditions);
             }
 
             @Override
-            public <A> List<A> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <A> List<A> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
@@ -2057,17 +2057,17 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectByCondition(conditions);
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectIdByCondition(conditions);
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.countByCondition(conditions);
             }
 
@@ -2130,17 +2130,17 @@ public class TableOperatorFactory {
             }
 
             @Override
-            public List<Object> selectByCondition(List<Pair<String, Object>> conditions) {
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectByCondition(conditions);
             }
 
             @Override
-            public <T> List<T> selectIdByCondition(List<Pair<String, Object>> conditions) {
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectIdByCondition(conditions);
             }
 
             @Override
-            public int countByCondition(List<Pair<String, Object>> conditions) {
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.countByCondition(conditions);
             }
 
@@ -2276,7 +2276,7 @@ public class TableOperatorFactory {
         return uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
-    /*private Object getUniqueValueByMap(List<Pair<String, Object>> conditions) {
+    /*private Object getUniqueValueByMap(List<TwinsValue<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return "";
         }
@@ -2290,7 +2290,7 @@ public class TableOperatorFactory {
             StringBuilder builder2 = new StringBuilder();
             int halfSize = size / 2;
             int i = 0;
-            for (Pair<String, Object> pair : conditions) {
+            for (TwinsValue<String, Object> pair : conditions) {
                 if (i <= halfSize) {
                     builder1.append(jsonSerializer.toJsonString(pair.getValue()));
                 } else {
@@ -2380,7 +2380,7 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    /*private int doCountByCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private int doCountByCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("countByCondition", List.class);
@@ -2390,7 +2390,7 @@ public class TableOperatorFactory {
         }
     }*/
 
-    /*private List<Object> doSelectCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private List<Object> doSelectCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
@@ -2400,7 +2400,7 @@ public class TableOperatorFactory {
         }
     }*/
 
-    /*private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<Pair<String, Object>> conditions) {
+    /*private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
             Method insertMethod = operatorClass.getMethod("selectIdByCondition", List.class);

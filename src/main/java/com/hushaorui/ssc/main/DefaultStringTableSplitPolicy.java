@@ -2,7 +2,7 @@ package com.hushaorui.ssc.main;
 
 import com.hushaorui.ssc.config.TableSplitPolicy;
 import com.hushaorui.ssc.util.SscStringUtils;
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 public class DefaultStringTableSplitPolicy implements TableSplitPolicy<String> {
     private static TableSplitPolicy<String> instance;
@@ -27,7 +27,7 @@ public class DefaultStringTableSplitPolicy implements TableSplitPolicy<String> {
     }
 
     @Override
-    public Pair<String, String> getRange() {
-        return new Pair<>("", "");
+    public TwinsValue<String, String> getRange() {
+        return new TwinsValue<>("", "");
     }
 }

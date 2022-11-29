@@ -1,6 +1,6 @@
 package com.hushaorui.ssc.config;
 
-import javafx.util.Pair;
+import com.hushaorui.ssc.common.TwinsValue;
 
 /**
  * 分表策略
@@ -19,5 +19,5 @@ public interface TableSplitPolicy<TABLE_SPLIT_FIELD_TYPE extends Comparable<TABL
      * 作用范围
      * @return key: 最小值，value：最大值
      */
-    Pair<TABLE_SPLIT_FIELD_TYPE, TABLE_SPLIT_FIELD_TYPE> getRange();
+    TwinsValue<TABLE_SPLIT_FIELD_TYPE, TABLE_SPLIT_FIELD_TYPE> getRange();
 }
