@@ -394,7 +394,11 @@ public abstract class SscTableInfo {
                 notFirst = true;
                 builder.append(classDesc.getColumnByProp(pair.getKey()));
                 builder.append(ValueConditionEnum.getSqlString(value));
-                sscResult.paramList.add(value);
+                if (value instanceof SpecialValue) {
+                    sscResult.paramList.add(((SpecialValue) value).getValue());
+                } else {
+                    sscResult.paramList.add(value);
+                }
             }
         }
         return builder;
