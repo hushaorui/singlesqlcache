@@ -314,6 +314,9 @@ public abstract class SscTableInfo {
                     builder.append(tableNames[i]).append(".*");
             }
             builder.append(" from ").append(tableNames[i]);
+            if (iteratorBuilder.length() > 0) {
+                builder.append(" where ");
+            }
             builder.append(iteratorBuilder);
             params.addAll(paramList);
             if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
