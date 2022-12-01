@@ -1,5 +1,6 @@
 package com.hushaorui.ssc.common.data;
 
+import com.hushaorui.ssc.common.StringOrArray;
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.param.*;
 import com.hushaorui.ssc.common.TwinsValue;
@@ -35,11 +36,13 @@ public abstract class SscTableInfo {
     /** 根据唯一约束的字段查询数据 */
     protected Map<String, String> selectByUniqueKeySql;
     /** 根据指定字段查询数据 */
-    protected Map<String, String> noCachedSelectByConditionSql;
+    protected Map<String, StringOrArray> noCachedSelectByConditionSql;
     /** 根据指定字段查询数据的数量 */
-    protected Map<String, String> noCachedCountByConditionSql;
-    protected Map<String, String> noCachedSelectIdByConditionSql;
-
+    protected Map<String, StringOrArray> noCachedCountByConditionSql;
+    /** 根据指定字段查询数据id */
+    protected Map<String, StringOrArray> noCachedSelectIdByConditionSql;
+    /** 根据指定字段删除数据 */
+    protected Map<String, StringOrArray> noCachedDeleteByConditionSql;
 
     /** 所有不需要缓存的数据更新 */
     protected String[] updateAllNotCachedByIdSql;
@@ -141,7 +144,7 @@ public abstract class SscTableInfo {
                 }
             }
         }
-        String sql = noCachedSelectByConditionSql.get(key);
+        StringOrArray sql = noCachedSelectByConditionSql.get(key);
         if (sql == null) {
             // 创建新的sql和查询条件数组，并返回
             return putNoCachedConditionSqlToMap(key, noCachedSelectByConditionSql, conditions, 1);
@@ -158,7 +161,7 @@ public abstract class SscTableInfo {
                 }
             }
         }
-        String sql = noCachedCountByConditionSql.get(key);
+        StringOrArray sql = noCachedCountByConditionSql.get(key);
         if (sql == null) {
             // 创建新的sql和查询条件数组，并返回
             return putNoCachedConditionSqlToMap(key, noCachedCountByConditionSql, conditions, 2);
@@ -174,7 +177,7 @@ public abstract class SscTableInfo {
                 }
             }
         }
-        String sql = noCachedSelectIdByConditionSql.get(key);
+        StringOrArray sql = noCachedSelectIdByConditionSql.get(key);
         if (sql == null) {
             // 创建新的sql和查询条件数组，并返回
             return putNoCachedConditionSqlToMap(key, noCachedSelectIdByConditionSql, conditions, 3);
@@ -182,7 +185,23 @@ public abstract class SscTableInfo {
         return getParamsAndSql(sql, conditions);
     }
 
-    protected SscSqlResult getParamsAndSql(String sql, List<TwinsValue<String, Object>> conditions) {
+    public SscSqlResult getNoCachedDeleteConditionSql(String key, List<TwinsValue<String, Object>> conditions) {
+        if (noCachedDeleteByConditionSql == null) {
+            synchronized (this) {
+                if (noCachedDeleteByConditionSql == null) {
+                    noCachedDeleteByConditionSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        StringOrArray sql = noCachedDeleteByConditionSql.get(key);
+        if (sql == null) {
+            // 创建新的sql和查询条件数组，并返回
+            return putNoCachedConditionSqlToMap(key, noCachedDeleteByConditionSql, conditions, 99);
+        }
+        return getParamsAndSql(sql, conditions);
+    }
+
+    protected SscSqlResult getParamsAndSql(StringOrArray sql, List<TwinsValue<String, Object>> conditions) {
         if (conditions == null || conditions.isEmpty()) {
             return new SscSqlResult(sql, Collections.emptyList());
         }
@@ -190,7 +209,14 @@ public abstract class SscTableInfo {
         Integer maxResult = null;
         // 根据 sscResult 和 conditions，获得params
         List<Object> params = new ArrayList<>();
-        for (int i = 0; i < tableNames.length; i ++) {
+        int tableCount;
+        if (sql.getValue() == null) {
+            // 多个sql的情况，参数不需要叠在一起
+            tableCount = 1;
+        } else {
+            tableCount = tableNames.length;
+        }
+        for (int i = 0; i < tableCount; i ++) {
             for (TwinsValue<String, Object> pair : conditions) {
                 Object value = pair.getValue();
                 if (value instanceof ValueIn) {
@@ -207,7 +233,7 @@ public abstract class SscTableInfo {
                         }
                         if (values == null || values.isEmpty()) {
                             // 该条件不存在
-                            sql = sql.replace(oldString, "");
+                            sql = replaceStringOrArray(sql, oldString, "");
                         } else if (values.size() > 1) {
                             StringBuilder newString = new StringBuilder(columnName);
                             if (isNot) {
@@ -221,7 +247,7 @@ public abstract class SscTableInfo {
                             }
                             newString.append("?)");
                             // 超过一个
-                            sql = sql.replace(oldString, newString.toString());
+                            sql = replaceStringOrArray(sql, oldString, newString.toString());
                         }
                     }
                     if (values != null) {
@@ -256,6 +282,21 @@ public abstract class SscTableInfo {
             params.add(maxResult);
         }
         return new SscSqlResult(sql, params);
+    }
+
+    private StringOrArray replaceStringOrArray(StringOrArray stringOrArray, String oldString, String newString) {
+        if (stringOrArray.getValue() == null) {
+            // 有数组
+            String[] array = stringOrArray.getArray();
+            String[] newArray = new String[array.length];
+            for (int a = 0; a < array.length; a++) {
+                newArray[a] = array[a].replace(oldString, newString);
+            }
+            return new StringOrArray(newArray);
+        } else {
+            // 单个字符串
+            return new StringOrArray(stringOrArray.getValue().replace(oldString, newString));
+        }
     }
 
     public String getKeyByConditionList(List<TwinsValue<String, Object>> conditions) {
@@ -297,7 +338,7 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
-    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, String> map, List<TwinsValue<String, Object>> conditions, int sqlType) {
+    protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, StringOrArray> map, List<TwinsValue<String, Object>> conditions, int sqlType) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
         List<Object> paramList = new ArrayList<>();
@@ -305,21 +346,37 @@ public abstract class SscTableInfo {
         sscResult.paramList = paramList;
         List<Object> params = new ArrayList<>();
         StringBuilder iteratorBuilder = iteratorConditions(conditions, sscResult);
+        String[] array;
+        if (sqlType == 99) {
+            array = new String[tableCount];
+        } else {
+            array = null;
+        }
+        boolean addParam = true;
         for (int i = 0; i < tableCount; i ++) {
-            if (i > 0) {
-                builder.append("\nunion all \n");
+            if (sqlType == 99) {
+                builder.setLength(0);
+            } else {
+                if (i > 0) {
+                    builder.append("\nunion all \n");
+                }
             }
-            builder.append("select ");
             switch (sqlType) {
                 case 2:
+                    builder.append("select ");
                     // count(id)
                     builder.append("count(").append(classDesc.getColumnByProp(classDesc.getIdPropName())).append(")");
                     break;
                 case 3:
+                    builder.append("select ");
                     // xxx.id
                     builder.append(tableNames[i]).append(".").append(classDesc.getColumnByProp(classDesc.getIdPropName()));
                     break;
+                case 99:
+                    builder.append("delete");
+                    break;
                 default:
+                    builder.append("select ");
                     // xxx.*
                     builder.append(tableNames[i]).append(".*");
             }
@@ -328,11 +385,19 @@ public abstract class SscTableInfo {
                 builder.append(" where ");
             }
             builder.append(iteratorBuilder);
-            params.addAll(paramList);
+            if (addParam) {
+                params.addAll(paramList);
+            }
             if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
                 appendLimitString(builder);
-                params.add(sscResult.firstResult);
-                params.add(sscResult.maxResult);
+                if (addParam) {
+                    params.add(sscResult.firstResult);
+                    params.add(sscResult.maxResult);
+                }
+            }
+            if (sqlType == 99) {
+                array[i] = builder.toString();
+                addParam = false;
             }
         }
         if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
@@ -340,12 +405,17 @@ public abstract class SscTableInfo {
             params.add(sscResult.firstResult);
             params.add(sscResult.maxResult);
         }
-        String sql = builder.toString();
-        SscSqlResult sscSqlResult = new SscSqlResult(sql, params);
-        if (key == null) {
-            map.put(getKeyByConditionList(conditions), builder.toString());
+        StringOrArray stringOrArray;
+        if (sqlType == 99) {
+            stringOrArray = new StringOrArray(array);
         } else {
-            map.put(key, builder.toString());
+            stringOrArray = new StringOrArray(builder.toString());
+        }
+        SscSqlResult sscSqlResult = new SscSqlResult(stringOrArray, params);
+        if (key == null) {
+            map.put(getKeyByConditionList(conditions), stringOrArray);
+        } else {
+            map.put(key, stringOrArray);
         }
         return sscSqlResult;
     }

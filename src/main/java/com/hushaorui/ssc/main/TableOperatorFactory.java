@@ -1,5 +1,6 @@
 package com.hushaorui.ssc.main;
 
+import com.hushaorui.ssc.common.TwinsValue;
 import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 import com.hushaorui.ssc.common.data.DataClassDesc;
@@ -10,7 +11,6 @@ import com.hushaorui.ssc.config.*;
 import com.hushaorui.ssc.exception.SscRuntimeException;
 import com.hushaorui.ssc.log.SscLog;
 import com.hushaorui.ssc.util.SscStringUtils;
-import com.hushaorui.ssc.common.TwinsValue;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -986,6 +986,10 @@ public class TableOperatorFactory {
             public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return (List<T>) completelyOperator.selectIdByCondition(conditions);
             }
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                completelyOperator.deleteByCondition(conditions);
+            }
 
             @Override
             public int countByCondition(List<TwinsValue<String, Object>> conditions) {
@@ -1049,6 +1053,11 @@ public class TableOperatorFactory {
             @Override
             public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectIdByCondition(conditions);
+            }
+
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                completelyOperator.deleteByCondition(conditions);
             }
 
             @Override
@@ -1292,8 +1301,9 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
-                log.debug("执行查询语句(selectByCondition): %s", sscSqlResult.getSql());
-                return jdbcTemplate.query(sscSqlResult.getSql(), getRowMapper(), params);
+                String sql = sscSqlResult.getSql().getValue();
+                log.debug("执行查询语句(selectByCondition): %s", sql);
+                return jdbcTemplate.query(sql, getRowMapper(), params);
             }
 
             @Override
@@ -1302,8 +1312,9 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedCountConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
-                log.debug("执行查询语句(countByCondition): %s", sscSqlResult.getSql());
-                List<Integer> integers = jdbcTemplate.queryForList(sscSqlResult.getSql(), int.class, params);
+                String sql = sscSqlResult.getSql().getValue();
+                log.debug("执行查询语句(countByCondition): %s", sql);
+                List<Integer> integers = jdbcTemplate.queryForList(sql, int.class, params);
                 if (integers == null) {
                     return 0;
                 }
@@ -1320,8 +1331,21 @@ public class TableOperatorFactory {
                 SscSqlResult sscSqlResult = sscTableInfo.getNoCachedSelectIdConditionSql(key, conditions);
                 Object[] params = sscSqlResult.getParams().toArray();
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
-                log.debug("执行查询语句(selectIdByCondition)：%s", sscSqlResult.getSql());
-                return (List<T>) jdbcTemplate.queryForList(sscSqlResult.getSql(), (Class<Object>) sscTableInfo.getIdJavaType(), params);
+                String sql = sscSqlResult.getSql().getValue();
+                log.debug("执行查询语句(selectIdByCondition)：%s", sql);
+                return (List<T>) jdbcTemplate.queryForList(sql, (Class<Object>) sscTableInfo.getIdJavaType(), params);
+            }
+
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                String key = sscTableInfo.getKeyByConditionList(conditions);
+                SscSqlResult sscSqlResult = sscTableInfo.getNoCachedDeleteConditionSql(key, conditions);
+                String[] sqlArray = sscSqlResult.getSql().getArray();
+                Object[] params = sscSqlResult.getParams().toArray();
+                for (String sql : sqlArray) {
+                    log.debug("执行删除语句(deleteByCondition)：%s", sql);
+                    jdbcTemplate.update(sql, params);
+                }
             }
 
             @Override
@@ -1795,6 +1819,11 @@ public class TableOperatorFactory {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectIdByCondition(conditions);
             }
 
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                getNoCachedCompletelyOperator(dataClass, sscTableInfo).deleteByCondition(conditions);
+            }
+
             private List<Comparable> getIdListFromDbByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 ArrayList<Comparable> idList = new ArrayList<>();
                 List<T> dataList;
@@ -2067,6 +2096,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                completelyOperator.deleteByCondition(conditions);
+            }
+
+            @Override
             public int countByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.countByCondition(conditions);
             }
@@ -2137,6 +2171,11 @@ public class TableOperatorFactory {
             @Override
             public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return completelyOperator.selectIdByCondition(conditions);
+            }
+
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+                completelyOperator.deleteByCondition(conditions);
             }
 
             @Override

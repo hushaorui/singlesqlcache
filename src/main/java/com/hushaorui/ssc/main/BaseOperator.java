@@ -66,6 +66,19 @@ public interface BaseOperator<DATA> {
     <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions);
 
     /**
+     * 根据条件删除数据
+     * @param conditions 筛选条件
+     */
+    void deleteByCondition(List<TwinsValue<String, Object>> conditions);
+
+    /**
+     * 根据条件删除数据
+     * @param conditions 筛选条件
+     */
+    default void deleteByCondition(TwinsValue<String, Object>... conditions) {
+        deleteByCondition(Arrays.asList(conditions));
+    }
+    /**
      * 根据条件查询id
      * @return id集合
      */

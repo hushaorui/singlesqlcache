@@ -1,21 +1,23 @@
 package com.hushaorui.ssc.common.data;
 
+import com.hushaorui.ssc.common.StringOrArray;
+
 import java.util.List;
 
 public class SscSqlResult {
-    private String sql;
+    private StringOrArray sql;
     private List<Object> params;
 
-    public SscSqlResult(String sql, List<Object> params) {
+    public SscSqlResult(StringOrArray sql, List<Object> params) {
         this.sql = sql;
         this.params = params;
     }
 
-    public String getSql() {
+    public StringOrArray getSql() {
         return sql;
     }
 
-    public void setSql(String sql) {
+    public void setSql(StringOrArray sql) {
         this.sql = sql;
     }
 

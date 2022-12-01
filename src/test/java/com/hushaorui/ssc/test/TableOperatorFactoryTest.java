@@ -606,4 +606,11 @@ public class TableOperatorFactoryTest {
             }
         }
     }
+
+    @Test
+    public void test_deleteByCondition() {
+        Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
+        TwinsValue<String, Object> pair = new TwinsValue<>("username", "99");
+        operator.deleteByCondition(pair);
+    }
 }
