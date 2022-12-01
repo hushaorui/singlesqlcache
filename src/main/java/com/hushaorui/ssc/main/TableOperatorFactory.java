@@ -583,7 +583,7 @@ public class TableOperatorFactory {
         if (haveTableSplitField != null) {
             if (haveTableSplitField && tableSplitField == null) {
                 throw new SscRuntimeException(String.format("class:%s 未指定分表字段，请使用getOperator方法获取操作对象", clazz.getName()));
-            } else if (! haveTableSplitField && tableSplitField != null) {
+            } else if (!haveTableSplitField && tableSplitField != null) {
                 throw new SscRuntimeException(String.format("class:%s 已指定分表字段: %s，请使用getSpecialOperator方法获取操作对象", clazz.getName(), tableSplitField));
             }
         }
@@ -723,7 +723,7 @@ public class TableOperatorFactory {
         if (tableSplitField != null) {
             // 如果注解中填的是表字段名，也不会报错，这里还原为类字段名
             String fieldName = columnPropMapping.getOrDefault(tableSplitField, tableSplitField);
-            if (! propColumnMapping.containsKey(fieldName)) {
+            if (!propColumnMapping.containsKey(fieldName)) {
                 throw new SscRuntimeException("未知的数据库分表字段名：" + fieldName);
             }
             // 分表字段是不能更新的
@@ -860,7 +860,7 @@ public class TableOperatorFactory {
                 log.debug("删除表, sql: " + sql);
                 jdbcTemplate.execute(sql);
             } catch (Exception e) {
-                if (! e.getMessage().contains("does not exist")) {
+                if (!e.getMessage().contains("does not exist")) {
                     log.error(e, "删除表失败");
                 }
             }
@@ -873,7 +873,7 @@ public class TableOperatorFactory {
                 log.debug("尝试创建表, sql: " + sql);
                 jdbcTemplate.execute(sql);
             } catch (Exception e) {
-                if (! e.getMessage().contains("already exist")) {
+                if (!e.getMessage().contains("already exist")) {
                     log.error(e, "尝试创建表失败");
                 }
             }
@@ -932,6 +932,7 @@ public class TableOperatorFactory {
     private <T> SpecialOperator<T> getNoCachedSpecialOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (SpecialOperator<T>) noCachedSpecialOperatorMap.computeIfAbsent(dataClass, clazz -> new SpecialOperator<Object>() {
             private CompletelyOperator<Object> completelyOperator = getNoCachedCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+
             @Override
             public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
                 return completelyOperator.selectById(id, tableSplitFieldValue);
@@ -986,6 +987,7 @@ public class TableOperatorFactory {
             public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
                 return (List<T>) completelyOperator.selectIdByCondition(conditions);
             }
+
             @Override
             public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
                 completelyOperator.deleteByCondition(conditions);
@@ -1002,9 +1004,11 @@ public class TableOperatorFactory {
             }
         });
     }
+
     private <T> Operator<T> getNoCachedOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (Operator<T>) noCachedOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
             private CompletelyOperator<Object> completelyOperator = getNoCachedCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+
             @Override
             public void delete(Comparable id) {
                 completelyOperator.delete(id);
@@ -1023,6 +1027,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectByUniqueName(String uniqueName, Object o) {
                 return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
+                return completelyOperator.selectByUniqueName(uniqueName, fieldValue);
             }
 
             @Override
@@ -1100,6 +1109,7 @@ public class TableOperatorFactory {
             throw new SscRuntimeException(e);
         }
     }
+
     private <T> CompletelyOperator<T> getNoCachedCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newNoCachedCompletelyOperator(clazz, sscTableInfo));
     }
@@ -1278,6 +1288,22 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
+                try {
+                    log.debug("执行查询语句(selectByUniqueName): %s, uniqueName:%s", sql, uniqueName);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), fieldValue);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
             public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object data) {
                 Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
                 if (propNames == null) {
@@ -1408,6 +1434,7 @@ public class TableOperatorFactory {
     private <T> CompletelyOperator<T> getCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return (CompletelyOperator<T>) userCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newCompletelyOperator(clazz, sscTableInfo));
     }
+
     private <T> CompletelyOperator<T> newCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
         return new CompletelyOperator<T>() {
             private final DataClassDesc classDesc = sscTableInfo.getClassDesc();
@@ -1444,6 +1471,7 @@ public class TableOperatorFactory {
             private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, T object, CacheStatus newStatus) {
                 insertOrUpDateOrDelete(objectClass, id, getFieldValueFromObject(classDesc, classDesc.getTableSplitField(), object), object, newStatus);
             }
+
             private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, Comparable tableSplitFieldValue, T object, CacheStatus newStatus) {
                 /*if (CacheStatus.DELETE.equals(newStatus)) {
                     // 需要删除该数据
@@ -1687,6 +1715,23 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public T selectByUniqueName(String uniqueName, Comparable uniqueValue) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + dataClass.getName());
+                }
+                if (propNames.size() > 0) {
+                    throw new SscRuntimeException(String.format("唯一键：%s 含有多个字段，不能使用此方法，class:%s", uniqueName, dataClass.getName()));
+                }
+                if (!getSwitch) {
+                    // 缓存已关闭，直接调用数据库查询
+                    log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, uniqueValue:%s", dataClass.getName(), uniqueName, uniqueValue);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, uniqueValue);
+                }
+                return selectByUniqueValue(propNames, uniqueName, uniqueValue, null);
+            }
+
+            @Override
             public T selectByUniqueName(String uniqueName, Object data) {
                 Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
                 if (propNames == null) {
@@ -1695,7 +1740,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
-                    return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, (T) data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
@@ -1703,12 +1748,22 @@ public class TableOperatorFactory {
                     log.error("未能获取到唯一键的值, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
                     return null;
                 }
+                return selectByUniqueValue(propNames, uniqueName, (Comparable) uniqueValue, (T) data);
+            }
+
+            private T selectByUniqueValue(Set<String> propNames, String uniqueName, Comparable uniqueValue, T data) {
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = cacheMap.get(uniqueValue);
                 if (cache == null) {
-                    log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data);
+                    log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, uniqueValue);
                     // 缓存击穿，查询数据库
-                    T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
+                    T value;
+                    if (data == null) {
+                        // 当没有实体类的时候，该情况为单个唯一键字段
+                        value = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, uniqueValue);
+                    } else {
+                        value = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, data);
+                    }
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
@@ -1737,7 +1792,7 @@ public class TableOperatorFactory {
                     } else {
                         // 再次计算唯一值，如果不相匹配，则该唯一键的值经过了修改，相当于被删除了
                         Object uniqueValueCheck = getUniqueValueByUniqueName(classDesc, propNames, objectInstance);
-                        if (! uniqueValue.equals(uniqueValueCheck)) {
+                        if (!uniqueValue.equals(uniqueValueCheck)) {
                             return null;
                         }
                     }
@@ -1754,7 +1809,7 @@ public class TableOperatorFactory {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, value:%s", dataClass.getName(), uniqueName, data);
-                    return (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, tableSplitFieldValue, data);
+                    return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, tableSplitFieldValue, (T) data);
                 }
 
                 Object uniqueValue = getUniqueValueByUniqueName(classDesc, propNames, data);
@@ -1767,7 +1822,7 @@ public class TableOperatorFactory {
                 if (cache == null) {
                     log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, data);
                     // 缓存击穿，查询数据库
-                    T value = (T) doSelectByUniqueName(getNoCachedCompletelyOperator(dataClass, sscTableInfo), uniqueName, data);
+                    T value = getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectByUniqueName(uniqueName, tableSplitFieldValue, (T) data);
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
@@ -1796,7 +1851,7 @@ public class TableOperatorFactory {
                     } else {
                         // 再次计算唯一值，如果不相匹配，则该唯一键的值经过了修改，相当于被删除了
                         Object uniqueValueCheck = getUniqueValueByUniqueName(classDesc, propNames, objectInstance);
-                        if (! uniqueValue.equals(uniqueValueCheck)) {
+                        if (!uniqueValue.equals(uniqueValueCheck)) {
                             return null;
                         }
                     }
@@ -1865,7 +1920,7 @@ public class TableOperatorFactory {
 
             @Override
             public <T1> List<T1> selectAllId(Comparable tableSplitFieldValue) {
-                if (! getSwitch) {
+                if (!getSwitch) {
                     return getNoCachedCompletelyOperator(dataClass, sscTableInfo).selectAllId(tableSplitFieldValue);
                 }
                 Map<Comparable, ObjectListCache> cacheMap = tableSplitFieldCacheMap.computeIfAbsent(dataClass, k1 -> new ConcurrentHashMap<>());
@@ -1900,7 +1955,7 @@ public class TableOperatorFactory {
                         idListFromDb = getIdListFromDbByGroupField(tableSplitFieldValue, fieldName, fieldValue);
                     }
                     idListFromDb.forEach(idInList -> {
-                        if (! idList.contains(idInList)) {
+                        if (!idList.contains(idInList)) {
                             idList.add(idInList);
                         }
                     });
@@ -1929,7 +1984,7 @@ public class TableOperatorFactory {
                         idListFromDb = getIdListFromDb(tableSplitFieldValue);
                     }
                     idListFromDb.forEach(idInList -> {
-                        if (! idList.contains(idInList)) {
+                        if (!idList.contains(idInList)) {
                             idList.add(idInList);
                         }
                     });
@@ -2045,6 +2100,7 @@ public class TableOperatorFactory {
         }
         return sscTableInfo.getClassDesc().isCached() ? (Operator<T>) userOperatorMap.computeIfAbsent(dataClass, clazz -> new Operator<Object>() {
             private CompletelyOperator<Object> completelyOperator = getCompletelyOperator((Class<Object>) dataClass, sscTableInfo);
+
             @Override
             public void delete(Comparable id) {
                 completelyOperator.delete(id);
@@ -2063,6 +2119,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectByUniqueName(String uniqueName, Object o) {
                 return completelyOperator.selectByUniqueName(uniqueName, o);
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
+                return completelyOperator.selectByUniqueName(uniqueName, fieldValue);
             }
 
             @Override
@@ -2114,6 +2175,7 @@ public class TableOperatorFactory {
 
     /**
      * 当分表字段自定义时，使用此方法
+     *
      * @param dataClass 数据类
      * @return 操作类
      */
@@ -2230,7 +2292,7 @@ public class TableOperatorFactory {
             // 新旧两个对象是否相等
             boolean equals = SscStringUtils.objectEquals(oldFieldValue, newFieldValue);
             // 分组字段发生了改变，旧的缓存中也将该id删除
-            if (! equals) {
+            if (!equals) {
                 // 重新设置分组字段的值
                 cache.setGroupFieldValue(propName, newFieldValue);
                 ObjectListCache objectListCache = cacheMap.get(oldFieldValue);
@@ -2419,56 +2481,6 @@ public class TableOperatorFactory {
         return String.format("%s;%s", SscStringUtils.md5Encode(builder1.toString()), SscStringUtils.md5Encode(builder2.toString()));
     }
 
-    /*private int doCountByCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
-        try {
-            Class<? extends Operator> operatorClass = operator.getClass();
-            Method insertMethod = operatorClass.getMethod("countByCondition", List.class);
-            return (int) insertMethod.invoke(operator, conditions);
-        } catch (Exception e) {
-            throw new SscRuntimeException(String.format("countByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
-        }
-    }*/
-
-    /*private List<Object> doSelectCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
-        try {
-            Class<? extends Operator> operatorClass = operator.getClass();
-            Method insertMethod = operatorClass.getMethod("selectByCondition", List.class);
-            return (List<Object>) insertMethod.invoke(operator, conditions);
-        } catch (Exception e) {
-            throw new SscRuntimeException(String.format("selectByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
-        }
-    }*/
-
-    /*private <T> List<T> doSelectByIdCondition(Operator<?> operator, List<TwinsValue<String, Object>> conditions) {
-        try {
-            Class<? extends Operator> operatorClass = operator.getClass();
-            Method insertMethod = operatorClass.getMethod("selectIdByCondition", List.class);
-            return (List<T>) insertMethod.invoke(operator, conditions);
-        } catch (Exception e) {
-            throw new SscRuntimeException(String.format("selectIdByCondition error! operator class: %s, value: %s", operator.getClass().getName(), globalConfig.getJsonSerializer().toJsonString(conditions)), e);
-        }
-    }*/
-
-    private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Comparable tableSplitFieldValue, Object data) {
-        try {
-            Class<? extends Operator> operatorClass = operator.getClass();
-            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Comparable.class, Object.class);
-            return insertMethod.invoke(operator, uniqueName, tableSplitFieldValue, data);
-        } catch (Exception e) {
-            throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
-        }
-    }
-
-    private Object doSelectByUniqueName(Operator<?> operator, String uniqueName, Object data) {
-        try {
-            Class<? extends Operator> operatorClass = operator.getClass();
-            Method insertMethod = operatorClass.getMethod("selectByUniqueName", String.class, Object.class);
-            return insertMethod.invoke(operator, uniqueName, data);
-        } catch (Exception e) {
-            throw new SscRuntimeException(String.format("SelectByUniqueName error! operator class: %s, value: %s", operator.getClass().getName(), data), e);
-        }
-    }
-
     private void doUpdate(Operator<?> operator, Object value) {
         try {
             Class<? extends Operator> operatorClass = operator.getClass();
@@ -2594,7 +2606,7 @@ public class TableOperatorFactory {
                     tableSplitFieldValue = id;
                 } else {
                     tableSplitFieldValue = getFieldValueFromObject(classDesc, tableSplitField, object);
-                    assert  tableSplitFieldValue != null : new SscRuntimeException(String.format("插入数据失败，分表字段：%s 值为null, class: %s", tableSplitField, object.getClass().getName()));
+                    assert tableSplitFieldValue != null : new SscRuntimeException(String.format("插入数据失败，分表字段：%s 值为null, class: %s", tableSplitField, object.getClass().getName()));
                 }
             }
             return getTableIndex((Comparable) tableSplitFieldValue, tableCount);
