@@ -19,7 +19,7 @@ public class DefaultIntegerIdGeneratePolicy implements IdGeneratePolicy<Integer>
         return instance;
     }
     private DefaultIntegerIdGeneratePolicy() {}
-    Map<Class<?>, AtomicInteger> map = new ConcurrentHashMap<>();
+    protected Map<Class<?>, AtomicInteger> map = new ConcurrentHashMap<>();
     @Override
     public Integer getId(Class<?> dataClass) {
         return map.computeIfAbsent(dataClass, key -> new AtomicInteger(1)).getAndIncrement();

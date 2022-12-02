@@ -19,7 +19,7 @@ public class DefaultLongIdGeneratePolicy implements IdGeneratePolicy<Long> {
         return instance;
     }
     private DefaultLongIdGeneratePolicy() {}
-    Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
+    protected Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
     @Override
     public Long getId(Class<?> dataClass) {
         return map.computeIfAbsent(dataClass, key -> new AtomicLong(1L)).getAndIncrement();

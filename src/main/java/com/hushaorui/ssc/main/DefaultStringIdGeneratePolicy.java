@@ -20,7 +20,7 @@ public class DefaultStringIdGeneratePolicy implements IdGeneratePolicy<String> {
         return instance;
     }
     private DefaultStringIdGeneratePolicy() {}
-    Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
+    protected Map<Class<?>, AtomicLong> map = new ConcurrentHashMap<>();
     @Override
     public String getId(Class<?> dataClass) {
         return SscStringUtils.getSameLengthString(map.computeIfAbsent(dataClass, key -> new AtomicLong(1L)).getAndIncrement(), 16);
