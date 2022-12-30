@@ -1,33 +1,7 @@
 package com.hushaorui.ssc.test;
 
-import com.alibaba.druid.pool.DruidDataSource;
-import com.alibaba.fastjson.JSONArray;
-import com.hushaorui.ssc.common.TwinsValue;
-import com.hushaorui.ssc.common.data.ColumnMetaData;
-import com.hushaorui.ssc.config.JSONSerializer;
-import com.hushaorui.ssc.config.SscGlobalConfig;
-import com.hushaorui.ssc.main.Operator;
-import com.hushaorui.ssc.main.SpecialOperator;
-import com.hushaorui.ssc.main.TableOperatorFactory;
-import com.hushaorui.ssc.param.*;
-import com.hushaorui.ssc.test.common.CommonResource;
-import com.hushaorui.ssc.test.common.TestMiniGame;
-import com.hushaorui.ssc.test.common.TestPlayer;
-import org.junit.Before;
-import org.junit.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.rowset.SqlRowSet;
-import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
-
-import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-
 public class TableOperatorFactoryTest {
-    private JdbcTemplate jdbcTemplate;
+    /*private JdbcTemplate jdbcTemplate;
     private TableOperatorFactory tableOperatorFactory;
     private JSONSerializer jsonSerializer;
     @Before
@@ -367,12 +341,12 @@ public class TableOperatorFactoryTest {
     public void test_countByCondition() {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
         List<TwinsValue<String, Object>> conditions = new ArrayList<>();
-        /*List<Long> ids = new ArrayList<>();
+        *//*List<Long> ids = new ArrayList<>();
         ids.add(1L);
         ids.add(8L);
         conditions.add(new TwinsValue<>("userId", new ValueIn<>(ids)));
         conditions.add(new TwinsValue<>("", new ValueFirstResult(0)));
-        conditions.add(new TwinsValue<>("", new ValueMaxResult(4)));*/
+        conditions.add(new TwinsValue<>("", new ValueMaxResult(4)));*//*
         int count = operator.countByCondition(conditions);
         System.out.println(count);
     }
@@ -470,20 +444,20 @@ public class TableOperatorFactoryTest {
             SpecialOperator<TestMiniGame> operator = tableOperatorFactory.getSpecialOperator(TestMiniGame.class);
             List<TestMiniGame> testMiniGames = operator.selectByTableSplitField(100L);
             System.out.println(JSONArray.toJSONString(testMiniGames));
-            /*{
+            *//*{
                 // 中间加一个同userId的数据
                 TestMiniGame testMiniGame = new TestMiniGame();
                 testMiniGame.setUserId(100L);
                 testMiniGame.setData("data06");
                 operator.insert(testMiniGame);
-            }*/
-            /*{
+            }*//*
+            *//*{
                 // 删除一个数据
                 TestMiniGame testMiniGame = new TestMiniGame();
                 testMiniGame.setGameId(6L);
                 testMiniGame.setUserId(100L);
                 operator.delete(testMiniGame);
-            }*/
+            }*//*
             testMiniGames = operator.selectByTableSplitField(100L);
             System.out.println(JSONArray.toJSONString(testMiniGames));
         } catch (Exception e) {
@@ -612,5 +586,5 @@ public class TableOperatorFactoryTest {
         Operator<TestPlayer> operator = tableOperatorFactory.getOperator(TestPlayer.class);
         TwinsValue<String, Object> pair = new TwinsValue<>("username", "99");
         operator.deleteByCondition(pair);
-    }
+    }*/
 }
