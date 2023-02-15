@@ -1,9 +1,11 @@
 package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.common.StringOrArray;
+import com.hushaorui.ssc.common.TwinsValue;
+import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.param.*;
-import com.hushaorui.ssc.common.TwinsValue;
+import com.hushaorui.ssc.util.SscStringUtils;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,6 +55,8 @@ public abstract class SscTableInfo {
 
     /** 数据类描述 */
     protected DataClassDesc classDesc;
+    /** 全局配置 */
+    protected SscGlobalConfig config;
     /** id的数据类型 */
     protected Class<?> idJavaType;
     protected Map<String, String> uniqueSelectSqlMap;
@@ -129,6 +133,7 @@ public abstract class SscTableInfo {
 
     public SscTableInfo(DataClassDesc classDesc, SscGlobalConfig config) {
         this.classDesc = classDesc;
+        this.config = config;
     }
 
     /**
@@ -216,9 +221,10 @@ public abstract class SscTableInfo {
         } else {
             tableCount = tableNames.length;
         }
+        JSONSerializer jsonSerializer = config.getJsonSerializer();
         for (int i = 0; i < tableCount; i ++) {
             for (TwinsValue<String, Object> pair : conditions) {
-                Object value = pair.getValue();
+                Object value = SscStringUtils.getFieldValueAccordWithSql(pair.getValue(), jsonSerializer);
                 if (value instanceof ValueIn) {
                     boolean isNot = value instanceof ValueIsNotIn;
                     ValueIn<Object> valueIn = (ValueIn<Object>) value;
@@ -304,11 +310,12 @@ public abstract class SscTableInfo {
             return "";
         }
         StringBuilder key = new StringBuilder();
+        JSONSerializer jsonSerializer = config.getJsonSerializer();
         for (int i = 0; i < conditions.size(); i++) {
             // 统一使用 columnName
             TwinsValue<String, Object> pair = conditions.get(i);
             String columnName = classDesc.getColumnByProp(pair.getKey());
-            Object value = pair.getValue();
+            Object value = SscStringUtils.getFieldValueAccordWithSql(pair.getValue(), jsonSerializer);
             key.append(ValueConditionEnum.getKeyString(value));
             // 字段名不可能存在空格，这里使用空格分隔
             key.append(columnName);
@@ -426,8 +433,9 @@ public abstract class SscTableInfo {
             return builder;
         }
         boolean notFirst = false;
+        JSONSerializer jsonSerializer = config.getJsonSerializer();
         for (TwinsValue<String, Object> pair : conditions) {
-            Object value = pair.getValue();
+            Object value = SscStringUtils.getFieldValueAccordWithSql(pair.getValue(), jsonSerializer);
             if (value instanceof ValueIn) {
                 boolean isNot = value instanceof ValueIsNotIn;
                 if (notFirst) {

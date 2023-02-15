@@ -1219,6 +1219,11 @@ public class TableOperatorFactory {
                                         // 如果有其他特殊的方法，这里还需要添加
                                         if (byte[].class.equals(propType)) {
                                             methodName = "getBytes";
+                                        } else if (propType.isArray() || Collection.class.isAssignableFrom(propType) || Map.class.isAssignableFrom(propType)) {
+                                            String string = resultSet.getString(columnName);
+                                            Method setMethod = classDesc.getPropSetMethods().get(propName);
+                                            setMethod.invoke(data, globalConfig.getJsonSerializer().parseObject(string, propType));
+                                            continue;
                                         } else if (Integer.class.equals(propType) || int.class.equals(propType)) {
                                             methodName = "getInt";
                                         } else {
@@ -2528,7 +2533,7 @@ public class TableOperatorFactory {
         }
         Method getMethod = classDesc.getPropGetMethods().get(propName);
         try {
-            return (T) getMethod.invoke(object);
+            return (T) getFieldValueAccordWithSql(getMethod.invoke(object));
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new SscRuntimeException(String.format("Get %s value error in class: %s", propName, classDesc.getDataClass().getName()), e);
         }
@@ -2558,7 +2563,7 @@ public class TableOperatorFactory {
             }
             Method method = classDesc.getPropGetMethods().get(propName);
             try {
-                paramArray[index++] = method.invoke(object);
+                paramArray[index++] = getFieldValueAccordWithSql(method.invoke(object));
             } catch (IllegalAccessException | InvocationTargetException e) {
                 throw new SscRuntimeException(e);
             }
@@ -2582,7 +2587,7 @@ public class TableOperatorFactory {
         for (String propName : propColumnMapping.keySet()) {
             Method method = classDesc.getPropGetMethods().get(propName);
             try {
-                paramArray[index++] = method.invoke(object);
+                paramArray[index++] = getFieldValueAccordWithSql(method.invoke(object));
             } catch (IllegalAccessException | InvocationTargetException e) {
                 throw new SscRuntimeException(e);
             }
@@ -2626,6 +2631,15 @@ public class TableOperatorFactory {
         } catch (Exception e) {
             throw new SscRuntimeException(e);
         }
+    }
+
+    /**
+     * 将字段的值转化为符合sql规定的值
+     * @param fieldValue 字段的值
+     * @return 转化后的值
+     */
+    private Object getFieldValueAccordWithSql(Object fieldValue) {
+        return SscStringUtils.getFieldValueAccordWithSql(fieldValue, globalConfig.getJsonSerializer());
     }
 
     public void outputClassDescYamlData(String filePath) throws IOException {

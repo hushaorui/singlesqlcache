@@ -1,5 +1,6 @@
 package com.hushaorui.ssc.util;
 
+import com.hushaorui.ssc.config.JSONSerializer;
 import com.sun.org.apache.xerces.internal.impl.dv.util.HexBin;
 import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
 
@@ -7,6 +8,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Collection;
+import java.util.Map;
 
 public abstract class SscStringUtils {
 
@@ -133,6 +136,22 @@ public abstract class SscStringUtils {
             e.printStackTrace();
             return null;
         }
+    }
+
+    /**
+     * 将字段的值转化为符合sql规定的值
+     * @param fieldValue 字段的值
+     * @return 转化后的值
+     */
+    public static Object getFieldValueAccordWithSql(Object fieldValue, JSONSerializer jsonSerializer) {
+        if (fieldValue == null) {
+            return null;
+        }
+        if ((fieldValue instanceof Collection) || (fieldValue instanceof Map) ||
+                (fieldValue.getClass().isArray() && ! byte[].class.equals(fieldValue.getClass()))) {
+            return jsonSerializer.toJsonString(fieldValue);
+        }
+        return fieldValue;
     }
 
     /**

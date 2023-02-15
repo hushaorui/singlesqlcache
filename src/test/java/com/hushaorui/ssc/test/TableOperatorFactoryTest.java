@@ -1,7 +1,24 @@
 package com.hushaorui.ssc.test;
 
+import com.alibaba.druid.pool.DruidDataSource;
+import com.hushaorui.ssc.common.TwinsValue;
+import com.hushaorui.ssc.config.JSONSerializer;
+import com.hushaorui.ssc.config.SscGlobalConfig;
+import com.hushaorui.ssc.main.Operator;
+import com.hushaorui.ssc.main.TableOperatorFactory;
+import com.hushaorui.ssc.test.common.TestSpecial;
+import org.junit.Before;
+import org.junit.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 public class TableOperatorFactoryTest {
-    /*private JdbcTemplate jdbcTemplate;
+    private JdbcTemplate jdbcTemplate;
     private TableOperatorFactory tableOperatorFactory;
     private JSONSerializer jsonSerializer;
     @Before
@@ -23,6 +40,83 @@ public class TableOperatorFactoryTest {
         }
     }
 
+    public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP) throws SQLException {
+        DruidDataSource dataSource = new DruidDataSource();
+        String driverClass = "com.mysql.jdbc.Driver";
+
+        long maxWaitMillis = 60000;
+        String validationQuery = "SELECT 1";
+        long timeBetweenEvictionRunsMillis = 300000;
+        dataSource.setDriverClassName(driverClass);
+        dataSource.setUrl(urlP);
+        dataSource.setUsername(usernameP);
+        dataSource.setPassword(passwordP);
+        dataSource.setMaxActive(maxActiveP);
+        dataSource.setMaxWait(maxWaitMillis);
+        dataSource.setValidationQuery(validationQuery);
+
+        dataSource.setTestOnBorrow(true);
+        dataSource.setTestOnReturn(true);
+        dataSource.setTestWhileIdle(true);
+        dataSource.setTimeBetweenEvictionRunsMillis(timeBetweenEvictionRunsMillis);
+
+        dataSource.init();
+        return dataSource;
+    }
+
+    @Test
+    public void test_TestSpecial_insert() {
+        try {
+            Operator<TestSpecial> operator = tableOperatorFactory.getOperator(TestSpecial.class);
+            TestSpecial testSpecial = new TestSpecial();
+            String[] stringArray = new String[] {"2", "3"};
+            Boolean[] booleans = new Boolean[] {true, false, null};
+            String message = "message111";
+            List<Integer> integers = Arrays.asList(1, 2, 3, 4);
+            Map<Integer, String> integerStringMap = new HashMap<>();
+            integerStringMap.put(10, "10");
+            integerStringMap.put(11, "10");
+            integerStringMap.put(12, "10");
+            testSpecial.setStringArray(stringArray);
+            testSpecial.setBooleans(booleans);
+            testSpecial.setMessage(message);
+            testSpecial.setIntegers(integers);
+            testSpecial.setIntegerStringMap(integerStringMap);
+            operator.insert(testSpecial);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_TestSpecial_select() {
+        try {
+            Operator<TestSpecial> operator = tableOperatorFactory.getOperator(TestSpecial.class);
+            TestSpecial testSpecial = operator.selectById(1L);
+            System.out.println(jsonSerializer.toJsonString(testSpecial));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_TestSpecial_selectByCondition() {
+        try {
+            Operator<TestSpecial> operator = tableOperatorFactory.getOperator(TestSpecial.class);
+            TestSpecial query = new TestSpecial();
+            Map<Integer, String> integerStringMap = new HashMap<>();
+            integerStringMap.put(10, "10");
+            integerStringMap.put(11, "10");
+            integerStringMap.put(12, "10");
+            query.setIntegerStringMap(integerStringMap);
+            List<TestSpecial> testSpecial = operator.selectByCondition(new TwinsValue<>("integerStringMap", integerStringMap));
+            System.out.println(jsonSerializer.toJsonString(testSpecial));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+/*
     @Test
     public void test_createTable() {
         try {
@@ -277,30 +371,6 @@ public class TableOperatorFactoryTest {
         player.setBirthdayTime(birthDayTime);
         player.setPrimarySchoolStartDay(primarySchoolStartDay);
         return player;
-    }
-
-    public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP) throws SQLException {
-        DruidDataSource dataSource = new DruidDataSource();
-        String driverClass = "com.mysql.jdbc.Driver";
-
-        long maxWaitMillis = 60000;
-        String validationQuery = "SELECT 1";
-        long timeBetweenEvictionRunsMillis = 300000;
-        dataSource.setDriverClassName(driverClass);
-        dataSource.setUrl(urlP);
-        dataSource.setUsername(usernameP);
-        dataSource.setPassword(passwordP);
-        dataSource.setMaxActive(maxActiveP);
-        dataSource.setMaxWait(maxWaitMillis);
-        dataSource.setValidationQuery(validationQuery);
-
-        dataSource.setTestOnBorrow(true);
-        dataSource.setTestOnReturn(true);
-        dataSource.setTestWhileIdle(true);
-        dataSource.setTimeBetweenEvictionRunsMillis(timeBetweenEvictionRunsMillis);
-
-        dataSource.init();
-        return dataSource;
     }
 
     @Test

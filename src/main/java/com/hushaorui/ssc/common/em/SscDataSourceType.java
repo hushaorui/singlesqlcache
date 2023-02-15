@@ -6,10 +6,10 @@ import com.hushaorui.ssc.common.data.SscTableInfoDerby;
 import com.hushaorui.ssc.common.data.SscTableInfoMysql;
 
 import java.sql.Timestamp;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * 支持的数据源的类型
@@ -36,6 +36,18 @@ public enum SscDataSourceType {
             ,Timestamp.class, "TIMESTAMP"
             ,Date.class, "DATETIME"
             ,byte[].class, "BLOB"
+            , Collection.class, "TEXT"
+            , List.class, "TEXT"
+            , ArrayList.class, "TEXT"
+            , LinkedList.class, "TEXT"
+            , Set.class, "TEXT"
+            , HashSet.class, "TEXT"
+            , ConcurrentSkipListSet.class, "TEXT"
+            , Map.class, "TEXT"
+            , HashMap.class, "TEXT"
+            , LinkedHashMap.class, "TEXT"
+            , ConcurrentHashMap.class, "TEXT"
+            , ConcurrentSkipListMap.class, "TEXT"
     ))),
     Derby(SscTableInfoDerby.class, Collections.unmodifiableMap(SscHashMap.of(
             String.class, "VARCHAR"
@@ -58,6 +70,18 @@ public enum SscDataSourceType {
             ,Timestamp.class, "TIMESTAMP"
             ,Date.class, "DATETIME"
             ,byte[].class, "BLOB"
+            , Collection.class, "TEXT"
+            , List.class, "TEXT"
+            , ArrayList.class, "TEXT"
+            , LinkedList.class, "TEXT"
+            , Set.class, "TEXT"
+            , HashSet.class, "TEXT"
+            , ConcurrentSkipListSet.class, "TEXT"
+            , Map.class, "TEXT"
+            , HashMap.class, "TEXT"
+            , LinkedHashMap.class, "TEXT"
+            , ConcurrentHashMap.class, "TEXT"
+            , ConcurrentSkipListMap.class, "TEXT"
     ))),
     ;
     /** sql 拼接的实现类 */
