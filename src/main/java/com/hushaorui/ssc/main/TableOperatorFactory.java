@@ -1556,19 +1556,16 @@ public class TableOperatorFactory {
                     // 缓存已关闭，直接调用数据库查询
                     log.debug("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
-                    Object value = noCachedOperator.selectById(id);
-                    if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, dataClass)) {
-                            value = noCachedOperator.selectById(id);
-                            if (value == null && insertFunction != null) {
-                                value = insertFunction.apply(id);
-                                if (value != null) {
-                                    doInsert(noCachedOperator, value);
-                                }
+                    synchronized (SscStringUtils.getLock(id, dataClass)) {
+                        Object value = noCachedOperator.selectById(id);
+                        if (value == null && insertFunction != null) {
+                            value = insertFunction.apply(id);
+                            if (value != null) {
+                                doInsert(noCachedOperator, value);
                             }
                         }
+                        return (T) value;
                     }
-                    return (T) value;
                 }
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(id);
@@ -1576,21 +1573,18 @@ public class TableOperatorFactory {
                     log.debug("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     // 缓存击穿，查询数据库
                     Operator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
-                    T value = (T) noCachedOperator.selectById(id);
-                    if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, dataClass)) {
-                            value = (T) noCachedOperator.selectById(id);
-                            if (value == null && insertFunction != null) {
-                                value = insertFunction.apply(id);
-                                if (value == null) {
-                                    insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
-                                } else {
-                                    insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.INSERT);
-                                }
+                    synchronized (SscStringUtils.getLock(id, dataClass)) {
+                        T value = (T) noCachedOperator.selectById(id);
+                        if (value == null && insertFunction != null) {
+                            value = insertFunction.apply(id);
+                            if (value == null) {
+                                insertOrUpDateOrDelete(dataClass, id, null, CacheStatus.AFTER_DELETE);
+                            } else {
+                                insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.INSERT);
                             }
                         }
+                        return value;
                     }
-                    return value;
                 } else {
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
@@ -1634,19 +1628,16 @@ public class TableOperatorFactory {
                     // 缓存已关闭，直接调用数据库查询
                     log.debug("缓存已关闭，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     CompletelyOperator<?> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
-                    Object value = noCachedOperator.selectById(id, tableSplitFieldValue);
-                    if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, dataClass)) {
-                            value = noCachedOperator.selectById(id, tableSplitFieldValue);
-                            if (value == null && insertFunction != null) {
-                                value = insertFunction.apply(id);
-                                if (value != null) {
-                                    doInsert(noCachedOperator, value);
-                                }
+                    synchronized (SscStringUtils.getLock(id, dataClass)) {
+                        Object value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                        if (value == null && insertFunction != null) {
+                            value = insertFunction.apply(id);
+                            if (value != null) {
+                                doInsert(noCachedOperator, value);
                             }
                         }
+                        return (T) value;
                     }
-                    return (T) value;
                 }
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.get(id);
@@ -1654,21 +1645,18 @@ public class TableOperatorFactory {
                     log.debug("未找到缓存(selectById)，直接查询数据库, class:%s, id:%s", dataClass.getName(), id);
                     // 缓存击穿，查询数据库
                     CompletelyOperator<T> noCachedOperator = getNoCachedCompletelyOperator(dataClass, sscTableInfo);
-                    T value = noCachedOperator.selectById(id, tableSplitFieldValue);
-                    if (value == null) {
-                        synchronized (SscStringUtils.getLock(id, dataClass)) {
-                            value = noCachedOperator.selectById(id, tableSplitFieldValue);
-                            if (value == null && insertFunction != null) {
-                                value = insertFunction.apply(id);
-                                if (value == null) {
-                                    insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, null, CacheStatus.AFTER_DELETE);
-                                } else {
-                                    insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, value, CacheStatus.INSERT);
-                                }
+                    synchronized (SscStringUtils.getLock(id, dataClass)) {
+                        T value = noCachedOperator.selectById(id, tableSplitFieldValue);
+                        if (value == null && insertFunction != null) {
+                            value = insertFunction.apply(id);
+                            if (value == null) {
+                                insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, null, CacheStatus.AFTER_DELETE);
+                            } else {
+                                insertOrUpDateOrDelete(dataClass, id, tableSplitFieldValue, value, CacheStatus.INSERT);
                             }
                         }
+                        return value;
                     }
-                    return value;
                 } else {
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
