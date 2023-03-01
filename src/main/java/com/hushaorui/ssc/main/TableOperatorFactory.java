@@ -85,6 +85,7 @@ public class TableOperatorFactory {
     private final Map<Class<?>, Operator<?>> noCachedOperatorMap = new ConcurrentHashMap<>();
     private final Map<Class<?>, SpecialOperator<?>> noCachedSpecialOperatorMap = new ConcurrentHashMap<>();
     private final Map<Class<?>, CompletelyOperator<?>> noCachedCompletelyOperatorMap = new ConcurrentHashMap<>();
+    private final Map<Class<?>, CompletelyOperator<?>> noCachedEmptyOperatorMap = new ConcurrentHashMap<>();
 
 
     private final Set<String> allTableNames = Collections.synchronizedSet(new HashSet<>());
@@ -114,23 +115,27 @@ public class TableOperatorFactory {
                 }
             }
         }
-        if (globalConfig.getMaxInactiveTime() > 0) {
-            // 开启缓存
-            this.name = TableOperatorFactory.class.getSimpleName() + "-" + name + "-Timer";
+        this.name = TableOperatorFactory.class.getSimpleName() + "-" + name + "-Timer";
+        if (globalConfig.isOnlyInMemory()) {
+            // 不使用数据库，缓存要开启，且不会过期
+            saveSwitch = true;
+            getSwitch = true;
+        } else if (globalConfig.getMaxInactiveTime() > 0) {
             timer = new Timer(this.name);
             // 默认 60000 (一分钟)
             long persistenceIntervalTime = globalConfig.getPersistenceIntervalTime();
             timer.schedule(timerTask = getTimerTask(), persistenceIntervalTime, persistenceIntervalTime);
+            // 设置了最大闲置时间 开启缓存
             saveSwitch = true;
             getSwitch = true;
             log.debug("缓存已开启，持久化间隔：%s 毫秒，缓存最大闲置时间: %s 毫秒", persistenceIntervalTime, globalConfig.getMaxInactiveTime());
-            if (globalConfig.isAddShutdownHook()) {
-                // 程序关闭前执行
-                Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
-            }
         } else {
             saveSwitch = false;
             getSwitch = false;
+        }
+        if (globalConfig.isAddShutdownHook()) {
+            // 程序关闭前执行
+            Runtime.getRuntime().addShutdownHook(new Thread(this::beforeShutdown));
         }
     }
 
@@ -783,6 +788,10 @@ public class TableOperatorFactory {
             Constructor<? extends SscTableInfo> constructor = tableInfoClass.getConstructor(DataClassDesc.class, SscGlobalConfig.class);
             SscTableInfo sscTableInfo = constructor.newInstance(dataClassDesc, globalConfig);
             allTableNames.add(dataClassDesc.getTableName());
+            if (globalConfig.isOnlyInMemory()) {
+                // 不使用数据库，则不创建数据库表
+                return sscTableInfo;
+            }
             switch (globalConfig.getLaunchPolicy()) {
                 case DROP_TABLE: {
                     // 删除表
@@ -1111,7 +1120,110 @@ public class TableOperatorFactory {
     }
 
     private <T> CompletelyOperator<T> getNoCachedCompletelyOperator(Class<T> dataClass, SscTableInfo sscTableInfo) {
-        return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newNoCachedCompletelyOperator(clazz, sscTableInfo));
+        if (globalConfig.isOnlyInMemory()) {
+            return (CompletelyOperator<T>) noCachedEmptyOperatorMap.computeIfAbsent(dataClass, clazz -> newNoCachedEmptyOperator(clazz, sscTableInfo));
+        } else {
+            return (CompletelyOperator<T>) noCachedCompletelyOperatorMap.computeIfAbsent(dataClass, clazz -> newNoCachedCompletelyOperator(clazz, sscTableInfo));
+        }
+    }
+
+    private <T> CompletelyOperator<T> newNoCachedEmptyOperator(Class<T> ignore, SscTableInfo ignore2) {
+        return (CompletelyOperator<T>) new CompletelyOperator<Object>() {
+            @Override
+            public void insert(Object object) {
+            }
+
+            @Override
+            public void update(Object object) {
+            }
+
+            @Override
+            public void delete(Object object) {
+            }
+
+            @Override
+            public List<Object> selectByCondition(List<TwinsValue<String, Object>> conditions) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public <T> List<T> selectIdByCondition(List<TwinsValue<String, Object>> conditions) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public void deleteByCondition(List<TwinsValue<String, Object>> conditions) {
+            }
+
+            @Override
+            public int countByCondition(List<TwinsValue<String, Object>> conditions) {
+                return 0;
+            }
+
+            @Override
+            public JdbcTemplate getJdbcTemplate() {
+                return jdbcTemplate;
+            }
+
+            @Override
+            public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
+                return null;
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
+                return null;
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object object) {
+                return null;
+            }
+
+            @Override
+            public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public <T> List<T> selectAllId(Comparable tableSplitFieldValue) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public void delete(Comparable id) {
+            }
+
+            @Override
+            public Object selectById(Comparable id) {
+                return null;
+            }
+
+            @Override
+            public Object selectByIdNotNull(Comparable id, Function<Comparable, Object> insertFunction) {
+                return null;
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Object object) {
+                return null;
+            }
+
+            @Override
+            public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
+                return null;
+            }
+
+            @Override
+            public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
+                return Collections.emptyList();
+            }
+        };
     }
 
     private <T> CompletelyOperator<T> newNoCachedCompletelyOperator(Class<T> clazz, SscTableInfo sscTableInfo) {
@@ -1588,22 +1700,27 @@ public class TableOperatorFactory {
                 } else {
                     // 更新最后一次使用时间
                     cache.setLastUseTime(System.currentTimeMillis());
-                    if (cache.getCacheStatus().isDelete() && insertFunction != null) {
-                        synchronized (cache) {
-                            // 该数据原本需要删除
-                            if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
-                                T newInstance = insertFunction.apply(id);
-                                cache.setObjectInstance(newInstance);
-                                // 预备删除，转为更新
-                                cache.setCacheStatus(CacheStatus.UPDATE);
-                                return newInstance;
-                            } else if (CacheStatus.AFTER_DELETE.equals(cache.getCacheStatus())) {
-                                // 已经删除了，这里需要插入
-                                T newInstance = insertFunction.apply(id);
-                                cache.setObjectInstance(newInstance);
-                                cache.setCacheStatus(CacheStatus.INSERT);
-                                return newInstance;
+                    if (cache.getCacheStatus().isDelete()) {
+                        if (insertFunction != null) {
+                            synchronized (cache) {
+                                // 该数据原本需要删除
+                                if (CacheStatus.DELETE.equals(cache.getCacheStatus())) {
+                                    T newInstance = insertFunction.apply(id);
+                                    cache.setObjectInstance(newInstance);
+                                    // 预备删除，转为更新
+                                    cache.setCacheStatus(CacheStatus.UPDATE);
+                                    return newInstance;
+                                } else if (CacheStatus.AFTER_DELETE.equals(cache.getCacheStatus())) {
+                                    // 已经删除了，这里需要插入
+                                    T newInstance = insertFunction.apply(id);
+                                    cache.setObjectInstance(newInstance);
+                                    cache.setCacheStatus(CacheStatus.INSERT);
+                                    return newInstance;
+                                }
                             }
+                        } else {
+                            // 该数据据被删除了
+                            return null;
                         }
                     }
                     T objectInstance = (T) cache.getObjectInstance();

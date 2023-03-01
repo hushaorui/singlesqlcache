@@ -29,6 +29,8 @@ public class SscGlobalConfig {
     private ColumnNameStyle columnNameStyle = ColumnNameStyle.LOWERCASE_UNDERLINE;
     /** 中心配置文件的路径(类路径下) */
     private String classesDescFilePath = "ssc.yml";
+    /** 是否只使用内存(不使用数据库) */
+    private boolean onlyInMemory = false;
     /** 日志打印类 */
     private SscLogFactory logFactory = SscLogFactoryImpl.getInstance();
     /** 数据库sql拼接描述类 */
@@ -255,5 +257,13 @@ public class SscGlobalConfig {
 
     public void setAppendNumberAtFirstTable(boolean appendNumberAtFirstTable) {
         this.appendNumberAtFirstTable = appendNumberAtFirstTable;
+    }
+
+    public boolean isOnlyInMemory() {
+        return onlyInMemory;
+    }
+
+    public void setOnlyInMemory(boolean onlyInMemory) {
+        this.onlyInMemory = onlyInMemory;
     }
 }
