@@ -19,6 +19,7 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1229,7 +1230,57 @@ public class TableOperatorFactory {
     private <T> CompletelyOperator<T> newNoCachedCompletelyOperator(Class<T> clazz, SscTableInfo sscTableInfo) {
         return (CompletelyOperator<T>) new CompletelyOperator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
-            private RowMapper<Object> rowMapper;
+            private volatile RowMapper<Object> rowMapper;
+            class MyRowMapper implements RowMapper<Object> {
+                private Method getObjectMethod;
+                public MyRowMapper() {
+                    try {
+                        getObjectMethod = ResultSet.class.getMethod("getObject", String.class);
+                    } catch (NoSuchMethodException e) {
+                        throw new SscRuntimeException("无法获取ResultSet的getObject方法", e);
+                    }
+                }
+                @Override
+                public Object mapRow(ResultSet resultSet, int rowNum) throws SQLException {
+                    try {
+                        Object data = clazz.newInstance();
+                        for (Map.Entry<String, String> entry : classDesc.getPropColumnMapping().entrySet()) {
+                            String propName = entry.getKey();
+                            String columnName = entry.getValue();
+                            Class<?> propType = classDesc.getPropGetMethods().get(propName).getReturnType();
+                            String methodName;
+                            // 如果有其他特殊的方法，这里还需要添加
+                            if (byte[].class.equals(propType)) {
+                                methodName = "getBytes";
+                            } else if (propType.isArray() || Collection.class.isAssignableFrom(propType) || Map.class.isAssignableFrom(propType)) {
+                                String string = resultSet.getString(columnName);
+                                Method setMethod = classDesc.getPropSetMethods().get(propName);
+                                setMethod.invoke(data, globalConfig.getJsonSerializer().parseObject(string, propType));
+                                continue;
+                            } else if (Integer.class.equals(propType) || int.class.equals(propType)) {
+                                methodName = "getInt";
+                            } else {
+                                if (propType.isPrimitive()) {
+                                    // 基本数据类型，首字母要大写
+                                    methodName = "get" + propType.getSimpleName().substring(0, 1).toUpperCase() + propType.getSimpleName().substring(1);
+                                } else {
+                                    methodName = "get" + propType.getSimpleName();
+                                }
+                            }
+                            if (getObjectMethod.invoke(resultSet, columnName) == null) {
+                                // getInt() 方法将null返回0，解决方案。同理还有 getLong 等
+                                continue;
+                            }
+                            Method getMethodFromResultSet = ResultSet.class.getMethod(methodName, String.class);
+                            Method setMethod = classDesc.getPropSetMethods().get(propName);
+                            setMethod.invoke(data, getMethodFromResultSet.invoke(resultSet, columnName));
+                        }
+                        return data;
+                    } catch (Exception e) {
+                        throw new SscRuntimeException(e);
+                    }
+                }
+            }
 
             @Override
             public void insert(Object object) {
@@ -1320,41 +1371,7 @@ public class TableOperatorFactory {
                 if (rowMapper == null) {
                     synchronized (this) {
                         if (rowMapper == null) {
-                            rowMapper = (resultSet, rowNum) -> {
-                                try {
-                                    Object data = clazz.newInstance();
-                                    for (Map.Entry<String, String> entry : classDesc.getPropColumnMapping().entrySet()) {
-                                        String propName = entry.getKey();
-                                        String columnName = entry.getValue();
-                                        Class<?> propType = classDesc.getPropGetMethods().get(propName).getReturnType();
-                                        String methodName;
-                                        // 如果有其他特殊的方法，这里还需要添加
-                                        if (byte[].class.equals(propType)) {
-                                            methodName = "getBytes";
-                                        } else if (propType.isArray() || Collection.class.isAssignableFrom(propType) || Map.class.isAssignableFrom(propType)) {
-                                            String string = resultSet.getString(columnName);
-                                            Method setMethod = classDesc.getPropSetMethods().get(propName);
-                                            setMethod.invoke(data, globalConfig.getJsonSerializer().parseObject(string, propType));
-                                            continue;
-                                        } else if (Integer.class.equals(propType) || int.class.equals(propType)) {
-                                            methodName = "getInt";
-                                        } else {
-                                            if (propType.isPrimitive()) {
-                                                // 基本数据类型，首字母要大写
-                                                methodName = "get" + propType.getSimpleName().substring(0, 1).toUpperCase() + propType.getSimpleName().substring(1);
-                                            } else {
-                                                methodName = "get" + propType.getSimpleName();
-                                            }
-                                        }
-                                        Method method = ResultSet.class.getMethod(methodName, String.class);
-                                        Method setMethod = classDesc.getPropSetMethods().get(propName);
-                                        setMethod.invoke(data, method.invoke(resultSet, columnName));
-                                    }
-                                    return data;
-                                } catch (Exception e) {
-                                    throw new SscRuntimeException(e);
-                                }
-                            };
+                            rowMapper = new MyRowMapper();
                         }
                     }
                 }

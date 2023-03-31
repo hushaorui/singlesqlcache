@@ -9,6 +9,7 @@ public class TestUseDb {
     private Long dbId;
     private String dbName;
     private Integer type;
+    private Long largeNum;
 
     public Long getDbId() {
         return dbId;
@@ -32,5 +33,13 @@ public class TestUseDb {
 
     public void setType(Integer type) {
         this.type = type;
+    }
+
+    public Long getLargeNum() {
+        return largeNum;
+    }
+
+    public void setLargeNum(Long largeNum) {
+        this.largeNum = largeNum;
     }
 }
