@@ -2,6 +2,7 @@ package com.hushaorui.ssc.common.data;
 
 import com.hushaorui.ssc.common.StringOrArray;
 import com.hushaorui.ssc.common.TwinsValue;
+import com.hushaorui.ssc.common.em.SscDataSourceType;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.param.*;
@@ -359,6 +360,9 @@ public abstract class SscTableInfo {
         } else {
             array = null;
         }
+        boolean isMysql = SscDataSourceType.Mysql.name().equals(config.getDataSourceType());
+        // 每个表都拼接 limit
+        boolean appendInEveryTable = ! isMysql && tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null;
         boolean addParam = true;
         for (int i = 0; i < tableCount; i ++) {
             if (sqlType == 99) {
@@ -395,7 +399,7 @@ public abstract class SscTableInfo {
             if (addParam) {
                 params.addAll(paramList);
             }
-            if (tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+            if (appendInEveryTable) {
                 appendLimitString(builder);
                 if (addParam) {
                     params.add(sscResult.firstResult);
@@ -407,7 +411,7 @@ public abstract class SscTableInfo {
                 addParam = false;
             }
         }
-        if (tableCount == 1 && sscResult.firstResult != null && sscResult.maxResult != null) {
+        if (! appendInEveryTable) {
             appendLimitString(builder);
             params.add(sscResult.firstResult);
             params.add(sscResult.maxResult);

@@ -39,10 +39,15 @@ public class TableOperatorFactoryTest {
             e.printStackTrace();
         }
     }
-
     public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP) throws SQLException {
+        return newDataSource(urlP, usernameP, passwordP, maxActiveP, null);
+    }
+
+    public static DruidDataSource newDataSource(String urlP, String usernameP, String passwordP, int maxActiveP, String driverClass) throws SQLException {
         DruidDataSource dataSource = new DruidDataSource();
-        String driverClass = "com.mysql.jdbc.Driver";
+        if (driverClass == null) {
+            driverClass = "com.mysql.jdbc.Driver";
+        }
 
         long maxWaitMillis = 60000;
         String validationQuery = "SELECT 1";
