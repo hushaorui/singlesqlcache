@@ -1474,7 +1474,7 @@ public class TableOperatorFactory {
                 //System.out.println(JSONArray.toJSONString(sscSqlResult, SerializerFeature.DisableCircularReferenceDetect));
                 String sql = sscSqlResult.getSql().getValue();
                 log.debug("执行查询语句(countByCondition): %s", sql);
-                List<Integer> integers = jdbcTemplate.queryForList(sql, int.class, params);
+                List<Integer> integers = jdbcTemplate.queryForList(sql, Integer.class, params);
                 if (integers == null) {
                     return 0;
                 }

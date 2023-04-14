@@ -346,6 +346,7 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
+    //  1:Select   2: countByCondition  3: SelectId   99:Delete
     protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, StringOrArray> map, List<TwinsValue<String, Object>> conditions, int sqlType) {
         StringBuilder builder = new StringBuilder();
         int tableCount = classDesc.getTableCount();
@@ -363,6 +364,8 @@ public abstract class SscTableInfo {
         boolean isMysql = SscDataSourceType.Mysql.name().equals(config.getDataSourceType());
         // 每个表都拼接 limit
         boolean appendInEveryTable = ! isMysql && tableCount > 1 && sscResult.firstResult != null && sscResult.maxResult != null;
+        // 最后拼接 limit
+        boolean appendInEnd = ! appendInEveryTable && sscResult.firstResult != null && sscResult.maxResult != null;
         boolean addParam = true;
         for (int i = 0; i < tableCount; i ++) {
             if (sqlType == 99) {
@@ -411,7 +414,7 @@ public abstract class SscTableInfo {
                 addParam = false;
             }
         }
-        if (! appendInEveryTable) {
+        if (appendInEnd) {
             appendLimitString(builder);
             params.add(sscResult.firstResult);
             params.add(sscResult.maxResult);

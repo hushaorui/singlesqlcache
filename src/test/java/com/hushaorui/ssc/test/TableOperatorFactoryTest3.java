@@ -89,4 +89,17 @@ public class TableOperatorFactoryTest3 {
             e.printStackTrace();
         }
     }
+
+    @Test
+    public void test_tableCount_8_limit_countByCondition() {
+        try {
+            SpecialOperator<TestNovelSectionModel> specialOperator = tableOperatorFactory.getSpecialOperator(TestNovelSectionModel.class);
+            List<TwinsValue<String, Object>> conditions = new ArrayList<>();
+            conditions.add(new TwinsValue<>("accountId", 2L));
+            int count = specialOperator.countByCondition(conditions);
+            System.out.println(count);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
