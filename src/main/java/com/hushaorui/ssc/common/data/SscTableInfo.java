@@ -222,6 +222,7 @@ public abstract class SscTableInfo {
         } else {
             tableCount = tableNames.length;
         }
+        boolean isMysql = SscDataSourceType.Mysql.name().equals(config.getDataSourceType());
         JSONSerializer jsonSerializer = config.getJsonSerializer();
         for (int i = 0; i < tableCount; i ++) {
             for (TwinsValue<String, Object> pair : conditions) {
@@ -279,12 +280,12 @@ public abstract class SscTableInfo {
                     params.add(value);
                 }
             }
-            if (tableNames.length > 1 && firstResult != null && maxResult != null) {
+            if (! isMysql && tableCount > 1 && firstResult != null && maxResult != null) {
                 params.add(firstResult);
                 params.add(maxResult);
             }
         }
-        if (tableNames.length == 1 && firstResult != null && maxResult != null) {
+        if ((isMysql || tableCount == 1) && firstResult != null && maxResult != null) {
             params.add(firstResult);
             params.add(maxResult);
         }
