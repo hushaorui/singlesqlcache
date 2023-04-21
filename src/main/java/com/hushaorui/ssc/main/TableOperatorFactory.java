@@ -409,6 +409,8 @@ public class TableOperatorFactory {
         Map<String, Method> propGetMethods = new HashMap<>();
         // 所有的类字段名和它的set方法
         Map<String, Method> propSetMethods = new HashMap<>();
+        // 字段的第一个泛型
+        Map<String, Class<?>> genericTypes = new HashMap<>(4);
         // 所有不为空的字段集合
         Set<String> notNullProps;
         if (dataClassDesc.getNotNullProps() == null) {
@@ -514,6 +516,13 @@ public class TableOperatorFactory {
                 if ("VARCHAR".equals(columnType)) {
                     columnType = String.format("%s(%s)", columnType, globalConfig.getDefaultLength());
                 }
+                if (Collection.class.isAssignableFrom(fieldType)) {
+                    // 是集合类型，需要收集泛型
+                    Type genericType = field.getGenericType();
+                    if(genericType instanceof ParameterizedType) {
+                        genericTypes.put(propName, (Class<?>)((ParameterizedType) genericType).getActualTypeArguments()[0]);
+                    }
+                }
                 propColumnTypeMapping.put(propName, columnType);
             }
             tempClass = tempClass.getSuperclass();
@@ -532,6 +541,7 @@ public class TableOperatorFactory {
         dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping);
         dataClassDesc.setPropGetMethods(propGetMethods);
         dataClassDesc.setPropSetMethods(propSetMethods);
+        dataClassDesc.setGenericTypes(genericTypes);
         dataClassDesc.setIdPropName(idPropName);
         //dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
         dataClassDesc.setNotNullProps(notNullProps);
@@ -607,6 +617,8 @@ public class TableOperatorFactory {
         Map<String, Method> propGetMethods = new HashMap<>();
         // 所有的类字段名和它的set方法
         Map<String, Method> propSetMethods = new HashMap<>();
+        // 字段的第一个泛型
+        Map<String, Class<?>> genericTypes = new HashMap<>(4);
         // 所有不为空的字段集合
         Set<String> notNullProps = new HashSet<>();
         // 有默认值的字段集合
@@ -714,6 +726,13 @@ public class TableOperatorFactory {
                 if ("VARCHAR".equals(columnType)) {
                     columnType = String.format("%s(%s)", columnType, globalConfig.getDefaultLength());
                 }
+                if (Collection.class.isAssignableFrom(fieldType)) {
+                    // 是集合类型，需要收集泛型
+                    Type genericType = field.getGenericType();
+                    if(genericType instanceof ParameterizedType) {
+                        genericTypes.put(propName, (Class<?>)((ParameterizedType) genericType).getActualTypeArguments()[0]);
+                    }
+                }
                 propColumnTypeMapping.put(propName, columnType);
             }
             tempClass = tempClass.getSuperclass();
@@ -745,6 +764,7 @@ public class TableOperatorFactory {
         dataClassDesc.setPropColumnMapping(propColumnMapping.isEmpty() ? Collections.emptyMap() : propColumnMapping);
         dataClassDesc.setPropColumnTypeMapping(propColumnTypeMapping.isEmpty() ? Collections.emptyMap() : propColumnTypeMapping);
         dataClassDesc.setPropGetMethods(propGetMethods.isEmpty() ? Collections.emptyMap() : propGetMethods);
+        dataClassDesc.setGenericTypes(genericTypes.isEmpty() ? Collections.emptyMap() : genericTypes);
         dataClassDesc.setPropSetMethods(propSetMethods.isEmpty() ? Collections.emptyMap() : propSetMethods);
         dataClassDesc.setIdPropName(idPropName);
         dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
@@ -1255,7 +1275,16 @@ public class TableOperatorFactory {
                             } else if (propType.isArray() || Collection.class.isAssignableFrom(propType) || Map.class.isAssignableFrom(propType)) {
                                 String string = resultSet.getString(columnName);
                                 Method setMethod = classDesc.getPropSetMethods().get(propName);
-                                setMethod.invoke(data, globalConfig.getJsonSerializer().parseObject(string, propType));
+                                Object value;
+                                if (Collection.class.isAssignableFrom(propType)) {
+                                    value = globalConfig.getJsonSerializer().parseArray(string, classDesc.getGenericTypes().get(propName));
+                                    if (Set.class.isAssignableFrom(propType)) {
+                                        value = new HashSet<>((List) value);
+                                    }
+                                } else {
+                                    value = globalConfig.getJsonSerializer().parseObject(string, propType);
+                                }
+                                setMethod.invoke(data, value);
                                 continue;
                             } else if (Integer.class.equals(propType) || int.class.equals(propType)) {
                                 methodName = "getInt";

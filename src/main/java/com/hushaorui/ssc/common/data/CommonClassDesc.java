@@ -10,6 +10,8 @@ public class CommonClassDesc {
     private Map<String, Method> propGetMethods;
     /** 所有的类字段名和它的set方法 */
     private Map<String, Method> propSetMethods;
+    /** 字段的第一个泛型 */
+    private Map<String, Class<?>> genericTypes;
 
     public Class<?> getDataClass() {
         return dataClass;
@@ -33,5 +35,13 @@ public class CommonClassDesc {
 
     public void setPropSetMethods(Map<String, Method> propSetMethods) {
         this.propSetMethods = propSetMethods;
+    }
+
+    public Map<String, Class<?>> getGenericTypes() {
+        return genericTypes;
+    }
+
+    public void setGenericTypes(Map<String, Class<?>> genericTypes) {
+        this.genericTypes = genericTypes;
     }
 }

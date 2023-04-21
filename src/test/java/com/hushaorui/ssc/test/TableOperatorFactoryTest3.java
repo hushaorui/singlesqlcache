@@ -10,6 +10,7 @@ import com.hushaorui.ssc.main.SpecialOperator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.param.ValueFirstResult;
 import com.hushaorui.ssc.param.ValueMaxResult;
+import com.hushaorui.ssc.test.common.TestLongList;
 import com.hushaorui.ssc.test.common.TestNovelSectionModel;
 import com.hushaorui.ssc.test.common.TestUseDb;
 import org.junit.Before;
@@ -98,6 +99,27 @@ public class TableOperatorFactoryTest3 {
             conditions.add(new TwinsValue<>("accountId", 2L));
             int count = specialOperator.countByCondition(conditions);
             System.out.println(count);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_long_list() {
+        try {
+            Operator<TestLongList> operator = tableOperatorFactory.getOperator(TestLongList.class);
+            /*TestLongList testLongList = new TestLongList();
+            List<Long> longValue = new ArrayList<>();
+            for (long i = 0; i < 9; i++) {
+                longValue.add(i);
+            }
+            testLongList.setLongs(longValue);
+            operator.insert(testLongList);*/
+            TestLongList testLongList = operator.selectById(1L);
+            System.out.println(jsonSerializer.toJsonString(testLongList.getLongs()));
+            for (Long num : testLongList.getLongs()) {
+                System.out.println(num);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
