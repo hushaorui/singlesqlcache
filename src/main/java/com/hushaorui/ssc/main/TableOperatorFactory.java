@@ -969,6 +969,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
+                return completelyOperator.findById(selectStr, id, tableSplitFieldValue);
+            }
+
+            @Override
             public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
                 return completelyOperator.selectByIdNotNull(id, tableSplitFieldValue, insertFunction);
             }
@@ -1047,6 +1052,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectById(Comparable id) {
                 return completelyOperator.selectById(id);
+            }
+
+            @Override
+            public Object findById(String selectStr, Comparable id) {
+                return completelyOperator.findById(selectStr, id);
             }
 
             @Override
@@ -1192,6 +1202,16 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
+                return null;
+            }
+
+            @Override
+            public Object findById(String selectStr, Comparable id) {
+                return null;
+            }
+
+            @Override
             public Object selectByIdNotNull(Comparable id, Comparable tableSplitFieldValue, Function<Comparable, Object> insertFunction) {
                 return null;
             }
@@ -1273,7 +1293,13 @@ public class TableOperatorFactory {
                             if (byte[].class.equals(propType)) {
                                 methodName = "getBytes";
                             } else if (propType.isArray() || Collection.class.isAssignableFrom(propType) || Map.class.isAssignableFrom(propType)) {
-                                String string = resultSet.getString(columnName);
+                                String string;
+                                try {
+                                    string = resultSet.getString(columnName);
+                                } catch (SQLException ignore) {
+                                    // 找不到对应的列
+                                    continue;
+                                }
                                 Method setMethod = classDesc.getPropSetMethods().get(propName);
                                 Object value;
                                 if (Collection.class.isAssignableFrom(propType)) {
@@ -1296,8 +1322,13 @@ public class TableOperatorFactory {
                                     methodName = "get" + propType.getSimpleName();
                                 }
                             }
-                            if (getObjectMethod.invoke(resultSet, columnName) == null) {
-                                // getInt() 方法将null返回0，解决方案。同理还有 getLong 等
+                            try {
+                                if (getObjectMethod.invoke(resultSet, columnName) == null) {
+                                    // getInt() 方法将null返回0，解决方案。同理还有 getLong 等
+                                    continue;
+                                }
+                            } catch (InvocationTargetException ignore) {
+                                // 这里报错证明是查询部分字段
                                 continue;
                             }
                             Method getMethodFromResultSet = ResultSet.class.getMethod(methodName, String.class);
@@ -1421,11 +1452,42 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findById(String selectStr, Comparable id) {
+                int tableIndex = getTableIndex(classDesc, null, id);
+                // 去除两端的空格和前面的select
+                selectStr = selectStr.trim();
+                if (selectStr.startsWith("select")) {
+                    selectStr = selectStr.substring("select".length()).trim();
+                }
+                String sql = sscTableInfo.getFindByIdSql(selectStr, tableIndex);
+                try {
+                    log.debug("执行查询语句(findById): %s, id:%s", sql, id);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查不到数据时会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
             public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
                 String sql = sscTableInfo.getSelectByIdSql()[tableIndex];
                 try {
                     log.debug("执行查询语句(selectById): %s, id:%s, tableSplitFieldValue:%s", sql, id, tableSplitFieldValue);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查不到数据时会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sscTableInfo.getFindByIdSql(selectStr, tableIndex);
+                try {
+                    log.debug("执行查询语句(findById): %s, id:%s, tableSplitFieldValue:%s", sql, id, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查不到数据时会抛出此异常
@@ -1866,8 +1928,19 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public T findById(String selectStr, Comparable id) {
+                // 该方法无法使用缓存
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findById(selectStr, id);
+            }
+
+            @Override
             public T selectById(Comparable id, Comparable tableSplitFieldValue) {
                 return selectByIdNotNull(id, tableSplitFieldValue, null);
+            }
+
+            @Override
+            public T findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findById(selectStr, id, tableSplitFieldValue);
             }
 
             @Override
@@ -2268,6 +2341,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findById(String selectStr, Comparable id) {
+                return completelyOperator.findById(selectStr, id);
+            }
+
+            @Override
             public Object selectByIdNotNull(Comparable id, Function<Comparable, Object> insertFunction) {
                 return completelyOperator.selectByIdNotNull(id, insertFunction);
             }
@@ -2349,6 +2427,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectById(Comparable id, Comparable tableSplitFieldValue) {
                 return completelyOperator.selectById(id, tableSplitFieldValue);
+            }
+
+            @Override
+            public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
+                return completelyOperator.findById(selectStr, id, tableSplitFieldValue);
             }
 
             @Override

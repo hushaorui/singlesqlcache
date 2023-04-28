@@ -28,6 +28,8 @@ public abstract class SscTableInfo {
     //protected String selectAllIdSql;
     /** 根据id查询指定数据 */
     protected String[] selectByIdSql;
+    /** 根据id查询指定数据的一部分字段 */
+    protected Map<String, StringOrArray> findByIdSql;
     /** 根据分表字段查询(每种数据只能有一个分表字段) */
     protected String[] selectByTableSplitFieldSql;
     /** 根据分组字段查询 */
@@ -158,6 +160,26 @@ public abstract class SscTableInfo {
         return getParamsAndSql(sql, conditions);
     }
 
+    public String getFindByIdSql(String selectStr, int tableIndex) {
+        if (findByIdSql == null) {
+            synchronized (this) {
+                if (findByIdSql == null) {
+                    findByIdSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        StringOrArray stringOrArray = findByIdSql.get(selectStr);
+        if (stringOrArray == null) {
+            return putNoCachedFindSqlToMap(selectStr, tableIndex, null);
+        } else {
+            String sql = stringOrArray.getByIndex(tableIndex);
+            if (sql == null) {
+                return putNoCachedFindSqlToMap(selectStr, tableIndex, stringOrArray);
+            } else {
+                return sql;
+            }
+        }
+    }
 
     public SscSqlResult getNoCachedCountConditionSql(String key, List<TwinsValue<String, Object>> conditions) {
         if (noCachedCountByConditionSql == null) {
@@ -347,6 +369,24 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
+
+    protected String putNoCachedFindSqlToMap(String selectStr, int tableIndex, StringOrArray stringOrArray) {
+        String sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " +
+                classDesc.getColumnByProp(classDesc.getIdPropName()) + " = ?";
+        if (stringOrArray == null) {
+            if (classDesc.getTableCount() == 1) {
+                stringOrArray = new StringOrArray(sql);
+            } else {
+                String[] array = new String[classDesc.getTableCount()];
+                array[tableIndex] = sql;
+                stringOrArray = new StringOrArray(array);
+            }
+            findByIdSql.put(selectStr, stringOrArray);
+        } else {
+            stringOrArray.getArray()[tableIndex] = sql;
+        }
+        return sql;
+    }
     //  1:Select   2: countByCondition  3: SelectId   99:Delete
     protected SscSqlResult putNoCachedConditionSqlToMap(String key, Map<String, StringOrArray> map, List<TwinsValue<String, Object>> conditions, int sqlType) {
         StringBuilder builder = new StringBuilder();

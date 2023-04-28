@@ -17,4 +17,12 @@ public class StringOrArray {
     public String[] getArray() {
         return array;
     }
+
+    public String getByIndex(int index) {
+        if (array != null) {
+            return array[index];
+        } else {
+            return value;
+        }
+    }
 }

@@ -14,6 +14,12 @@ public interface SpecialOperator<DATA> extends BaseOperator<DATA> {
      */
     DATA selectById(Comparable id, Comparable tableSplitFieldValue);
 
+
+    /**
+     * 根据id查询部分字段
+     */
+    DATA findById(String selectStr, Comparable id, Comparable tableSplitFieldValue);
+
     /**
      * 根据id查询，如果没有查询到，则将 insertFunction 的 返回结果数据插入并返回
      * @param id 数据id
