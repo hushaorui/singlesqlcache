@@ -519,8 +519,8 @@ public class TableOperatorFactory {
                 if (Collection.class.isAssignableFrom(fieldType)) {
                     // 是集合类型，需要收集泛型
                     Type genericType = field.getGenericType();
-                    if(genericType instanceof ParameterizedType) {
-                        genericTypes.put(propName, (Class<?>)((ParameterizedType) genericType).getActualTypeArguments()[0]);
+                    if (genericType instanceof ParameterizedType) {
+                        genericTypes.put(propName, (Class<?>) ((ParameterizedType) genericType).getActualTypeArguments()[0]);
                     }
                 }
                 propColumnTypeMapping.put(propName, columnType);
@@ -729,8 +729,8 @@ public class TableOperatorFactory {
                 if (Collection.class.isAssignableFrom(fieldType)) {
                     // 是集合类型，需要收集泛型
                     Type genericType = field.getGenericType();
-                    if(genericType instanceof ParameterizedType) {
-                        genericTypes.put(propName, (Class<?>)((ParameterizedType) genericType).getActualTypeArguments()[0]);
+                    if (genericType instanceof ParameterizedType) {
+                        genericTypes.put(propName, (Class<?>) ((ParameterizedType) genericType).getActualTypeArguments()[0]);
                     }
                 }
                 propColumnTypeMapping.put(propName, columnType);
@@ -1004,6 +1004,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return completelyOperator.findByGroupField(selectStr, tableSplitFieldValue, fieldName, fieldValue);
+            }
+
+            @Override
             public void insert(Object o) {
                 completelyOperator.insert(o);
             }
@@ -1092,6 +1097,11 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
                 return completelyOperator.selectByGroupField(fieldName, fieldValue);
+            }
+
+            @Override
+            public List<Object> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
+                return completelyOperator.findByGroupField(selectStr, fieldName, fieldValue);
             }
 
             @Override
@@ -1256,12 +1266,22 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
+                return Collections.emptyList();
+            }
+
+            @Override
             public <T> List<T> selectAllId(Comparable tableSplitFieldValue) {
                 return Collections.emptyList();
             }
 
             @Override
             public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return Collections.emptyList();
+            }
+
+            @Override
+            public List<Object> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 return Collections.emptyList();
             }
 
@@ -1310,8 +1330,10 @@ public class TableOperatorFactory {
         return (CompletelyOperator<T>) new CompletelyOperator<Object>() {
             private DataClassDesc classDesc = sscTableInfo.getClassDesc();
             private volatile RowMapper<Object> rowMapper;
+
             class MyRowMapper implements RowMapper<Object> {
                 private Method getObjectMethod;
+
                 public MyRowMapper() {
                     try {
                         getObjectMethod = ResultSet.class.getMethod("getObject", String.class);
@@ -1319,6 +1341,7 @@ public class TableOperatorFactory {
                         throw new SscRuntimeException("无法获取ResultSet的getObject方法", e);
                     }
                 }
+
                 @Override
                 public Object mapRow(ResultSet resultSet, int rowNum) throws SQLException {
                     try {
@@ -1569,7 +1592,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName);
                 Object[] params = getConditionParams(classDesc, propNames, data, false);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
@@ -1602,7 +1625,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), fieldValue);
@@ -1637,7 +1660,7 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName, tableIndex);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName, tableIndex);
                 Object[] params = getConditionParams(classDesc, propNames, data, true);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
@@ -1724,6 +1747,15 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<Object> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), fieldName);
+                assert sql != null : new SscRuntimeException(String.format("class:%s 未知的分组字段名称：%s", classDesc.getDataClass().getName(), fieldName));
+                // 执行sql
+                log.debug("执行查询语句(findByGroupField)：%s, fieldName:%s, fieldValue:%s", sql, fieldName, fieldValue);
+                return jdbcTemplate.query(sql, getRowMapper(), fieldValue);
+            }
+
+            @Override
             public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
                 if (propName.equals(classDesc.getTableSplitField())) {
@@ -1736,6 +1768,21 @@ public class TableOperatorFactory {
                 String sql = sqlArray[tableIndex];
                 // 执行sql
                 log.debug("执行查询语句(selectByGroupField)：%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
+                        sql, tableSplitFieldValue, fieldName, fieldValue);
+                return jdbcTemplate.query(sql, getRowMapper(), fieldValue);
+            }
+
+            @Override
+            public List<Object> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                String propName = classDesc.getColumnPropMapping().getOrDefault(fieldName, fieldName);
+                if (propName.equals(classDesc.getTableSplitField())) {
+                    return selectByTableSplitField(tableSplitFieldValue);
+                }
+                // 根据分表字段获取对应的表的索引
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), fieldName, tableIndex);
+                // 执行sql
+                log.debug("执行查询语句(findByGroupField)：%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
                         sql, tableSplitFieldValue, fieldName, fieldValue);
                 return jdbcTemplate.query(sql, getRowMapper(), fieldValue);
             }
@@ -2199,6 +2246,7 @@ public class TableOperatorFactory {
                     return (T) objectInstance;
                 }
             }
+
             @Override
             public T findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, T data) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByUniqueName(selectStr, uniqueName, tableSplitFieldValue, data);
@@ -2397,6 +2445,15 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public List<T> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByGroupField(selectStr, tableSplitFieldValue, fieldName, fieldValue);
+            }
+            @Override
+            public List<T> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByGroupField(selectStr, fieldName, fieldValue);
+            }
+
+            @Override
             public List<T> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
@@ -2489,6 +2546,11 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
                 return completelyOperator.selectByGroupField(fieldName, fieldValue);
+            }
+
+            @Override
+            public List<Object> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
+                return completelyOperator.findByGroupField(selectStr, fieldName, fieldValue);
             }
 
             @Override
@@ -2623,6 +2685,11 @@ public class TableOperatorFactory {
             @Override
             public List<Object> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 return completelyOperator.selectByGroupField(tableSplitFieldValue, fieldName, fieldValue);
+            }
+
+            @Override
+            public List<Object> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
+                return completelyOperator.findByGroupField(selectStr, tableSplitFieldValue, fieldName, fieldValue);
             }
 
             @Override
@@ -3000,6 +3067,7 @@ public class TableOperatorFactory {
 
     /**
      * 将字段的值转化为符合sql规定的值
+     *
      * @param fieldValue 字段的值
      * @return 转化后的值
      */

@@ -85,6 +85,19 @@ public class TableOperatorFactoryTest4 {
     }
 
     @Test
+    public void test_findByGroupField() {
+        try {
+            Operator<TestFind> operator = factory.getOperator(TestFind.class);
+            List<TestFind> list = operator.findByGroupField("id, name, longs", "time", 1683341381786L);
+            System.out.println(jsonSerializer.toJsonString(list));
+            list = operator.findByGroupField("id, name", "time", 1683341381786L);
+            System.out.println(jsonSerializer.toJsonString(list));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
     public void test_special_insert() {
         try {
             TestSpecialFind testSpecialFind = new TestSpecialFind();
@@ -121,6 +134,19 @@ public class TableOperatorFactoryTest4 {
             System.out.println(jsonSerializer.toJsonString(specialFind));
             specialFind = specialOperator.findByUniqueName("time,name,otherId", "name", 9, query);
             System.out.println(jsonSerializer.toJsonString(specialFind));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_special_findByGroupField() {
+        try {
+            SpecialOperator<TestSpecialFind> specialOperator = factory.getSpecialOperator(TestSpecialFind.class);
+            List<TestSpecialFind> list = specialOperator.findByGroupField("name,otherId", 9, "time", 1683342753019L);
+            System.out.println(jsonSerializer.toJsonString(list));
+            list = specialOperator.findByGroupField("time,name,otherId", 9, "time", 1683342753019L);
+            System.out.println(jsonSerializer.toJsonString(list));
         } catch (Exception e) {
             e.printStackTrace();
         }

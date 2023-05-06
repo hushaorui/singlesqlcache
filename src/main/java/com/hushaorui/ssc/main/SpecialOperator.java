@@ -69,4 +69,13 @@ public interface SpecialOperator<DATA> extends BaseOperator<DATA> {
      * @return 数据集合
      */
     List<DATA> selectByGroupField(Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue);
+
+    /**
+     * 根据分组字段查询
+     * @param tableSplitFieldValue 分表字段值
+     * @param fieldName 分组字段名
+     * @param fieldValue 字段值
+     * @return 数据集合
+     */
+    List<DATA> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue);
 }

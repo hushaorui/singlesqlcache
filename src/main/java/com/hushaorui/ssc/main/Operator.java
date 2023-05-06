@@ -73,4 +73,12 @@ public interface Operator<DATA> extends BaseOperator<DATA> {
      * @return
      */
     List<DATA> selectByGroupField(String fieldName, Comparable fieldValue);
+
+    /**
+     * 根据分组字段查询
+     * @param fieldName 分组字段名
+     * @param fieldValue 字段值
+     * @return
+     */
+    List<DATA> findByGroupField(String selectStr, String fieldName, Comparable fieldValue);
 }

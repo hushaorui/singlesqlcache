@@ -9,6 +9,7 @@ public class TestFind {
     private List<Long> longs;
     @FieldDesc(uniqueName = "name")
     private String name;
+    @FieldDesc(isGroup = true)
     private Long time;
 
     public Long getId() {
