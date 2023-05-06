@@ -984,6 +984,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, tableSplitFieldValue, data);
+            }
+
+            @Override
             public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 return completelyOperator.selectByTableSplitField(tableSplitFieldValue);
             }
@@ -1070,8 +1075,18 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Object o) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, o);
+            }
+
+            @Override
             public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
                 return completelyOperator.selectByUniqueName(uniqueName, fieldValue);
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, fieldValue);
             }
 
             @Override
@@ -1121,18 +1136,27 @@ public class TableOperatorFactory {
         });
     }
 
-    private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data) {
+    private Object[] getConditionParams(DataClassDesc classDesc, Set<String> propNames, Object data, boolean onlyOneTable) {
         int size = propNames.size();
         int tableCount = classDesc.getTableCount();
-        Object[] params = new Object[size * tableCount];
-        int index = 0;
-        for (String propName : propNames) {
-            params[index++] = getFieldValueFromObject(classDesc, propName, data);
-        }
-        int leftParamSize = (tableCount - 1) * size;
-        for (int i = 0; i < leftParamSize; i++) {
-            params[index] = params[index % size];
-            index++;
+        Object[] params;
+        if (onlyOneTable) {
+            params = new Object[size];
+            int index = 0;
+            for (String propName : propNames) {
+                params[index++] = getFieldValueFromObject(classDesc, propName, data);
+            }
+        } else {
+            params = new Object[size * tableCount];
+            int index = 0;
+            for (String propName : propNames) {
+                params[index++] = getFieldValueFromObject(classDesc, propName, data);
+            }
+            int leftParamSize = (tableCount - 1) * size;
+            for (int i = 0; i < leftParamSize; i++) {
+                params[index] = params[index % size];
+                index++;
+            }
         }
         return params;
     }
@@ -1222,6 +1246,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                return null;
+            }
+
+            @Override
             public List<Object> selectByTableSplitField(Comparable tableSplitFieldValue) {
                 return Collections.emptyList();
             }
@@ -1256,7 +1285,17 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Object o) {
+                return null;
+            }
+
+            @Override
             public Object selectByUniqueName(String uniqueName, Comparable fieldValue) {
+                return null;
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue) {
                 return null;
             }
 
@@ -1451,15 +1490,27 @@ public class TableOperatorFactory {
                 }
             }
 
-            @Override
-            public Object findById(String selectStr, Comparable id) {
-                int tableIndex = getTableIndex(classDesc, null, id);
+            private String getRealSelectStr(String selectStr) {
                 // 去除两端的空格和前面的select
                 selectStr = selectStr.trim();
                 if (selectStr.startsWith("select")) {
                     selectStr = selectStr.substring("select".length()).trim();
                 }
-                String sql = sscTableInfo.getFindByIdSql(selectStr, tableIndex);
+                String[] array = selectStr.split("\\s*,\\s*");
+                StringBuilder builder = new StringBuilder();
+                for (int i = 0; i < array.length; i++) {
+                    if (i > 0) {
+                        builder.append(", ");
+                    }
+                    builder.append(classDesc.getColumnByProp(array[i]));
+                }
+                return builder.toString();
+            }
+
+            @Override
+            public Object findById(String selectStr, Comparable id) {
+                int tableIndex = getTableIndex(classDesc, null, id);
+                String sql = sscTableInfo.getFindByIdSql(getRealSelectStr(selectStr), tableIndex);
                 try {
                     log.debug("执行查询语句(findById): %s, id:%s", sql, id);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -1485,7 +1536,7 @@ public class TableOperatorFactory {
             @Override
             public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindByIdSql(selectStr, tableIndex);
+                String sql = sscTableInfo.getFindByIdSql(getRealSelectStr(selectStr), tableIndex);
                 try {
                     log.debug("执行查询语句(findById): %s, id:%s, tableSplitFieldValue:%s", sql, id, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -1502,9 +1553,26 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
                 String sql = sscTableInfo.getUniqueSelectSqlMap().get(uniqueName);
-                Object[] params = getConditionParams(classDesc, propNames, data);
+                Object[] params = getConditionParams(classDesc, propNames, data, false);
                 try {
                     log.debug("执行查询语句(selectByUniqueName): %s, uniqueName:%s", sql, uniqueName);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Object data) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName);
+                Object[] params = getConditionParams(classDesc, propNames, data, false);
+                try {
+                    log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查到数据数量是0的时候会抛出此异常
@@ -1529,6 +1597,22 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName);
+                try {
+                    log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), fieldValue);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
             public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object data) {
                 Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
                 if (propNames == null) {
@@ -1536,9 +1620,27 @@ public class TableOperatorFactory {
                 }
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
                 String sql = sscTableInfo.getUniqueAndFieldSelectSqlMap().get(uniqueName)[tableIndex];
-                Object[] params = getConditionParams(classDesc, propNames, data);
+                Object[] params = getConditionParams(classDesc, propNames, data, true);
                 try {
                     log.debug("执行查询语句(selectByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
+                    return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
+                } catch (EmptyResultDataAccessException ignore) {
+                    // queryForObject 在查到数据数量是0的时候会抛出此异常
+                    return null;
+                }
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
+                if (propNames == null) {
+                    throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
+                }
+                int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
+                String sql = sscTableInfo.getUniqueFindSql(getRealSelectStr(selectStr), uniqueName, tableIndex);
+                Object[] params = getConditionParams(classDesc, propNames, data, true);
+                try {
+                    log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), params);
                 } catch (EmptyResultDataAccessException ignore) {
                     // queryForObject 在查到数据数量是0的时候会抛出此异常
@@ -1961,6 +2063,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public T findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByUniqueName(selectStr, uniqueName, fieldValue);
+            }
+
+            @Override
             public T selectByUniqueName(String uniqueName, Object data) {
                 Set<String> propNames = classDesc.getUniqueProps().get(uniqueName);
                 if (propNames == null) {
@@ -1978,6 +2085,11 @@ public class TableOperatorFactory {
                     return null;
                 }
                 return selectByUniqueValue(propNames, uniqueName, (Comparable) uniqueValue, (T) data);
+            }
+
+            @Override
+            public T findByUniqueName(String selectStr, String uniqueName, T data) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByUniqueName(selectStr, uniqueName, data);
             }
 
             private T selectByUniqueValue(Set<String> propNames, String uniqueName, Comparable uniqueValue, T data) {
@@ -2086,6 +2198,10 @@ public class TableOperatorFactory {
                     }
                     return (T) objectInstance;
                 }
+            }
+            @Override
+            public T findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, T data) {
+                return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByUniqueName(selectStr, uniqueName, tableSplitFieldValue, data);
             }
 
             @Override
@@ -2361,6 +2477,16 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Object o) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, o);
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, fieldValue);
+            }
+
+            @Override
             public List<Object> selectByGroupField(String fieldName, Comparable fieldValue) {
                 return completelyOperator.selectByGroupField(fieldName, fieldValue);
             }
@@ -2442,6 +2568,11 @@ public class TableOperatorFactory {
             @Override
             public Object selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, Object o) {
                 return completelyOperator.selectByUniqueName(uniqueName, tableSplitFieldValue, o);
+            }
+
+            @Override
+            public Object findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, Object data) {
+                return completelyOperator.findByUniqueName(selectStr, uniqueName, tableSplitFieldValue, data);
             }
 
             @Override

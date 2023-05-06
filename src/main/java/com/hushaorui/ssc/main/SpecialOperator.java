@@ -37,6 +37,15 @@ public interface SpecialOperator<DATA> extends BaseOperator<DATA> {
      */
     DATA selectByUniqueName(String uniqueName, Comparable tableSplitFieldValue, DATA data);
 
+    /**
+     * 根据唯一键查询数据
+     * @see com.hushaorui.ssc.common.anno.FieldDesc
+     * @param uniqueName 唯一键名称(自定义)
+     * @param data 封装了条件的数据对象
+     * @return 数据对象
+     */
+    DATA findByUniqueName(String selectStr, String uniqueName, Comparable tableSplitFieldValue, DATA data);
+
 
     /**
      * 根据分表字段查询数据

@@ -5,13 +5,16 @@ import com.hushaorui.ssc.common.em.SscDataSourceType;
 import com.hushaorui.ssc.config.JSONSerializer;
 import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.main.Operator;
+import com.hushaorui.ssc.main.SpecialOperator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
 import com.hushaorui.ssc.test.common.TestFind;
+import com.hushaorui.ssc.test.common.TestSpecialFind;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class TableOperatorFactoryTest4 {
@@ -47,7 +50,7 @@ public class TableOperatorFactoryTest4 {
             longs.add(2L);
             longs.add(5L);
             testFind.setLongs(longs);
-            testFind.setName("hahahaha");
+            testFind.setName("jack");
             testFind.setTime(System.currentTimeMillis());
             operator.insert(testFind);
         } catch (Exception e) {
@@ -63,6 +66,61 @@ public class TableOperatorFactoryTest4 {
             System.out.println(jsonSerializer.toJsonString(testFind));
             testFind = operator.findById("id,name", 1L);
             System.out.println(jsonSerializer.toJsonString(testFind));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_findByUniqueName() {
+        try {
+            Operator<TestFind> operator = factory.getOperator(TestFind.class);
+            TestFind testFind = operator.findByUniqueName("id,name, longs", "name", "jack");
+            System.out.println(jsonSerializer.toJsonString(testFind));
+            testFind = operator.findByUniqueName("id,name", "name", "jack");
+            System.out.println(jsonSerializer.toJsonString(testFind));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_special_insert() {
+        try {
+            TestSpecialFind testSpecialFind = new TestSpecialFind();
+            testSpecialFind.setLongs(Collections.singletonList(10L));
+            testSpecialFind.setName("tom");
+            testSpecialFind.setTime(System.currentTimeMillis());
+            testSpecialFind.setOtherId(9);
+            factory.getSpecialOperator(TestSpecialFind.class).insert(testSpecialFind);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_special_findById() {
+        try {
+            SpecialOperator<TestSpecialFind> specialOperator = factory.getSpecialOperator(TestSpecialFind.class);
+            TestSpecialFind specialFind = specialOperator.findById("name, otherId", 1L, 9);
+            System.out.println(jsonSerializer.toJsonString(specialFind));
+            specialFind = specialOperator.findById("name, otherId, time", 1L, 9);
+            System.out.println(jsonSerializer.toJsonString(specialFind));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_special_findByUniqueName() {
+        try {
+            SpecialOperator<TestSpecialFind> specialOperator = factory.getSpecialOperator(TestSpecialFind.class);
+            TestSpecialFind query = new TestSpecialFind();
+            query.setName("tom");
+            TestSpecialFind specialFind = specialOperator.findByUniqueName("name,otherId", "name", 9, query);
+            System.out.println(jsonSerializer.toJsonString(specialFind));
+            specialFind = specialOperator.findByUniqueName("time,name,otherId", "name", 9, query);
+            System.out.println(jsonSerializer.toJsonString(specialFind));
         } catch (Exception e) {
             e.printStackTrace();
         }

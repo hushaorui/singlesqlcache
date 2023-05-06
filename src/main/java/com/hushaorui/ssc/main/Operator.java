@@ -42,12 +42,29 @@ public interface Operator<DATA> extends BaseOperator<DATA> {
     DATA selectByUniqueName(String uniqueName, DATA data);
 
     /**
+     * 根据唯一键查询数据
+     * @see com.hushaorui.ssc.common.anno.FieldDesc
+     * @param uniqueName 唯一键名称(自定义)
+     * @param data 封装了条件的数据对象
+     * @return 数据对象
+     */
+    DATA findByUniqueName(String selectStr, String uniqueName, DATA data);
+
+    /**
      * 根据唯一键查询数据（只适合非联合唯一的字段，也就是单个字段唯一）
      * @param uniqueName 唯一键名称(自定义)
      * @param fieldValue 唯一键字段值
      * @return 数据对象
      */
     DATA selectByUniqueName(String uniqueName, Comparable fieldValue);
+
+    /**
+     * 根据唯一键查询数据（只适合非联合唯一的字段，也就是单个字段唯一）
+     * @param uniqueName 唯一键名称(自定义)
+     * @param fieldValue 唯一键字段值
+     * @return 数据对象
+     */
+    DATA findByUniqueName(String selectStr, String uniqueName, Comparable fieldValue);
 
     /**
      * 根据分组字段查询

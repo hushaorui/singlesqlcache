@@ -30,6 +30,7 @@ public abstract class SscTableInfo {
     protected String[] selectByIdSql;
     /** 根据id查询指定数据的一部分字段 */
     protected Map<String, StringOrArray> findByIdSql;
+    protected Map<String, String> findByUniqueSql;
     /** 根据分表字段查询(每种数据只能有一个分表字段) */
     protected String[] selectByTableSplitFieldSql;
     /** 根据分组字段查询 */
@@ -178,6 +179,33 @@ public abstract class SscTableInfo {
             } else {
                 return sql;
             }
+        }
+    }
+
+    public String getUniqueFindSql(String selectStr, String uniqueName) {
+        return getUniqueFindSql(selectStr, uniqueName, tableNames.length == 1 ? 0 : null);
+    }
+
+    public String getUniqueFindSql(String selectStr, String uniqueName, Integer tableIndex) {
+        String columnName = classDesc.getColumnByProp(uniqueName);
+        String key;
+        if (tableIndex == null) {
+            key = String.format("%s by %s", selectStr, columnName);
+        } else {
+            key = String.format("%s by %s with %s", selectStr, columnName, tableIndex);
+        }
+        if (findByUniqueSql == null) {
+            synchronized (this) {
+                if (findByUniqueSql == null) {
+                    findByUniqueSql = new ConcurrentHashMap<>();
+                }
+            }
+        }
+        String sql = findByUniqueSql.get(key);
+        if (sql != null) {
+            return sql;
+        } else {
+            return putNoCachedFindUniqueSqlToMap(selectStr, columnName, key, tableIndex);
         }
     }
 
@@ -369,6 +397,24 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
+    protected String putNoCachedFindUniqueSqlToMap(String selectStr, String uniqueName, String key, Integer tableIndex) {
+        String sql;
+        if (tableIndex == null) {
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < tableNames.length; i++) {
+                if (i > 0) {
+                    builder.append("\n union all \n");
+                }
+                builder.append("select ").append(selectStr).append(" from ").append(tableNames[i]);
+                builder.append(" where ").append(uniqueName).append(" = ?");
+            }
+            sql = builder.toString();
+        } else {
+            sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " + uniqueName + " = ?";
+        }
+        findByUniqueSql.put(key, sql);
+        return sql;
+    }
 
     protected String putNoCachedFindSqlToMap(String selectStr, int tableIndex, StringOrArray stringOrArray) {
         String sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " +

@@ -1,11 +1,14 @@
 package com.hushaorui.ssc.test.common;
 
+import com.hushaorui.ssc.common.anno.DataClass;
 import com.hushaorui.ssc.common.anno.FieldDesc;
 
 import java.util.List;
 
-public class TestFind {
+@DataClass(tableSplitField = "otherId", tableCount = 3)
+public class TestSpecialFind {
     private Long id;
+    private Integer otherId;
     private List<Long> longs;
     @FieldDesc(uniqueName = "name")
     private String name;
@@ -17,6 +20,14 @@ public class TestFind {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Integer getOtherId() {
+        return otherId;
+    }
+
+    public void setOtherId(Integer otherId) {
+        this.otherId = otherId;
     }
 
     public List<Long> getLongs() {
