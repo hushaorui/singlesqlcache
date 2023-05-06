@@ -182,12 +182,12 @@ public abstract class SscTableInfo {
         }
     }
 
-    public String getUniqueFindSql(String selectStr, String uniqueName) {
-        return getUniqueFindSql(selectStr, uniqueName, tableNames.length == 1 ? 0 : null);
+    public String getFindSqlByFieldName(String selectStr, String fieldName) {
+        return getFindSqlByFieldName(selectStr, fieldName, tableNames.length == 1 ? 0 : null);
     }
 
-    public String getUniqueFindSql(String selectStr, String uniqueName, Integer tableIndex) {
-        String columnName = classDesc.getColumnByProp(uniqueName);
+    public String getFindSqlByFieldName(String selectStr, String fieldName, Integer tableIndex) {
+        String columnName = classDesc.getColumnByProp(fieldName);
         String key;
         if (tableIndex == null) {
             key = String.format("%s by %s", selectStr, columnName);
@@ -397,7 +397,7 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
-    protected String putNoCachedFindUniqueSqlToMap(String selectStr, String uniqueName, String key, Integer tableIndex) {
+    protected String putNoCachedFindUniqueSqlToMap(String selectStr, String columnName, String key, Integer tableIndex) {
         String sql;
         if (tableIndex == null) {
             StringBuilder builder = new StringBuilder();
@@ -406,11 +406,11 @@ public abstract class SscTableInfo {
                     builder.append("\n union all \n");
                 }
                 builder.append("select ").append(selectStr).append(" from ").append(tableNames[i]);
-                builder.append(" where ").append(uniqueName).append(" = ?");
+                builder.append(" where ").append(columnName).append(" = ?");
             }
             sql = builder.toString();
         } else {
-            sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " + uniqueName + " = ?";
+            sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " + columnName + " = ?";
         }
         findByUniqueSql.put(key, sql);
         return sql;
