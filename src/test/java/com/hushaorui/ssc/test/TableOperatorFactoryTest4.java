@@ -7,12 +7,14 @@ import com.hushaorui.ssc.config.SscGlobalConfig;
 import com.hushaorui.ssc.main.Operator;
 import com.hushaorui.ssc.main.SpecialOperator;
 import com.hushaorui.ssc.main.TableOperatorFactory;
+import com.hushaorui.ssc.test.common.TestByteArray;
 import com.hushaorui.ssc.test.common.TestFind;
 import com.hushaorui.ssc.test.common.TestSpecialFind;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -147,6 +149,44 @@ public class TableOperatorFactoryTest4 {
             System.out.println(jsonSerializer.toJsonString(list));
             list = specialOperator.findByGroupField("time,name,otherId", 9, "time", 1683342753019L);
             System.out.println(jsonSerializer.toJsonString(list));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_updateNotNull() {
+        try {
+            TestFind testFind = new TestFind();
+            testFind.setId(1L);
+            testFind.setName("jack");
+            testFind.setTime(System.currentTimeMillis());
+            factory.getOperator(TestFind.class).updateNotNull(testFind);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_byteArray_insert() {
+        try {
+            TestByteArray testByteArray = new TestByteArray();
+            testByteArray.setName("a");
+            testByteArray.setField1("a".getBytes(StandardCharsets.UTF_8));
+            Byte[] bytes = new Byte[1];
+            //bytes[0] = 1;
+            testByteArray.setField2(bytes);
+            factory.getOperator(TestByteArray.class).insert(testByteArray);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void test_byteArray_select() {
+        try {
+            TestByteArray testByteArray = factory.getOperator(TestByteArray.class).selectById(2L);
+            System.out.println(jsonSerializer.toJsonString(testByteArray));
         } catch (Exception e) {
             e.printStackTrace();
         }

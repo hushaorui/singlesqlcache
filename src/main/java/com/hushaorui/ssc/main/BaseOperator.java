@@ -30,6 +30,11 @@ public interface BaseOperator<DATA> {
     void delete(DATA data);
 
     /**
+     * 根据id更新非空字段
+     */
+    void updateNotNull(DATA data);
+
+    /**
      * 根据条件查询数据
      * @return 数据集合
      */

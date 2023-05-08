@@ -58,7 +58,7 @@ public class SscGlobalConfig {
         }
     }
     /** 默认情况下表格字段的类型 */
-    private String defaultTableType = "JSON";
+    private String defaultTableType = "VARCHAR(4096)";
     /** 默认的 VARCHAR 类型长度 */
     private int defaultLength = 64;
 

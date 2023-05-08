@@ -8,8 +8,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Collection;
-import java.util.Map;
+import java.util.*;
 
 public abstract class SscStringUtils {
 
@@ -139,6 +138,15 @@ public abstract class SscStringUtils {
     }
 
     /**
+     * 所有可以直接存入数据库的类型集合
+     */
+    public static final Set<Class<?>> staticTypes = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            byte.class, Byte.class, short.class, Short.class, int.class, Integer.class, long.class, Long.class,
+            boolean.class, Boolean.class, char.class, Character.class, float.class, Float.class, double.class, Double.class,
+            byte[].class, Byte[].class,
+            String.class
+    )));
+    /**
      * 将字段的值转化为符合sql规定的值
      * @param fieldValue 字段的值
      * @return 转化后的值
@@ -147,11 +155,15 @@ public abstract class SscStringUtils {
         if (fieldValue == null) {
             return null;
         }
-        if ((fieldValue instanceof Collection) || (fieldValue instanceof Map) ||
-                (fieldValue.getClass().isArray() && ! byte[].class.equals(fieldValue.getClass()))) {
-            return jsonSerializer.toJsonString(fieldValue);
+        if (fieldValue instanceof Date) {
+            // Date 类型不需要额外序列化
+            return fieldValue;
         }
-        return fieldValue;
+        if (staticTypes.contains(fieldValue.getClass())) {
+            return fieldValue;
+        }
+        // 其他的都需要序列化
+        return jsonSerializer.toJsonString(fieldValue);
     }
 
     /**

@@ -1019,6 +1019,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void updateNotNull(Object object) {
+                completelyOperator.updateNotNull(object);
+            }
+
+            @Override
             public void delete(Object o) {
                 completelyOperator.delete(o);
             }
@@ -1115,6 +1120,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void updateNotNull(Object object) {
+                completelyOperator.updateNotNull(object);
+            }
+
+            @Override
             public void delete(Object o) {
                 completelyOperator.delete(o);
             }
@@ -1200,6 +1210,10 @@ public class TableOperatorFactory {
 
             @Override
             public void update(Object object) {
+            }
+
+            @Override
+            public void updateNotNull(Object object) {
             }
 
             @Override
@@ -1459,8 +1473,62 @@ public class TableOperatorFactory {
                 int tableIndex = getTableIndex(classDesc, object, id);
                 String updateSql = sscTableInfo.getUpdateAllNotCachedByIdSql()[tableIndex];
                 Object[] params = getUpdateParamArrayFromObject(classDesc, object);
-                log.debug("执行更新语句：%s, id:%s", updateSql, id);
+                log.debug("执行更新语句(update)：%s, id:%s", updateSql, id);
                 jdbcTemplate.update(updateSql, params);
+            }
+
+            @Override
+            public void updateNotNull(Object object) {
+                Object id = getIdValueFromObject(classDesc, object);
+                int tableIndex = getTableIndex(classDesc, object, id);
+
+                List<Object> paramList = new ArrayList<>();
+                StringBuilder sql = new StringBuilder("update ");
+                sql.append(sscTableInfo.getTableNames()[tableIndex]).append(" set ");
+                String idPropName = classDesc.getIdPropName();
+                Map<String, Method> propGetMethods = classDesc.getPropGetMethods();
+                Set<String> notUpdateProps = classDesc.getNotUpdateProps();
+                boolean haveFieldUpdate = false;
+                for (Map.Entry<String, Method> entry : propGetMethods.entrySet()) {
+                    String propName = entry.getKey();
+                    if (idPropName.equals(propName)) {
+                        // id不更新
+                        continue;
+                    }
+                    if (notUpdateProps.contains(propName)) {
+                        // 指定不更新的字段
+                        continue;
+                    }
+                    try {
+                        Object fieldValue = entry.getValue().invoke(object);
+                        if (fieldValue == null) {
+                            // 字段为空的值不进行更新
+                            continue;
+                        }
+                        // 这里需要考虑将字段序列化
+                        paramList.add(getFieldValueAccordWithSql(fieldValue));
+                    } catch (Exception e) {
+                        log.error(String.format("获取字段值失败，class: %s, fieldName:%s", clazz.getName(), propName), e);
+                        continue;
+                    }
+                    if (haveFieldUpdate) {
+                        sql.append(", ");
+                    }
+                    sql.append(classDesc.getColumnByProp(propName)).append(" = ?");
+                    haveFieldUpdate = true;
+                }
+                String idColumnName = classDesc.getColumnByProp(idPropName);
+                if (!haveFieldUpdate) {
+                    // 一个需要更新的字段都没有，只能象征性 id = id
+                    sql.append(idColumnName).append(" = ").append(idColumnName);
+                }
+                sql.append(" where ").append(idColumnName).append(" = ?");
+
+                String updateSql = sql.toString();
+                paramList.add(id);
+
+                log.debug("执行更新语句(updateNotNull)：%s, id:%s", updateSql, id);
+                jdbcTemplate.update(updateSql, paramList.toArray());
             }
 
             @Override
@@ -1485,7 +1553,7 @@ public class TableOperatorFactory {
 
             private void delete(Comparable id, int tableIndex) {
                 String deleteSql = sscTableInfo.getDeleteByIdSql()[tableIndex];
-                log.debug("执行删除语句：%s, id:%s", deleteSql, id);
+                log.debug("执行删除语句(delete)：%s, id:%s", deleteSql, id);
                 jdbcTemplate.update(deleteSql, id);
             }
 
@@ -1847,22 +1915,6 @@ public class TableOperatorFactory {
             }
 
             private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, Comparable tableSplitFieldValue, T object, CacheStatus newStatus) {
-                /*if (CacheStatus.DELETE.equals(newStatus)) {
-                    // 需要删除该数据
-                    Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.get(objectClass);
-                    if (classMap != null) {
-                        ObjectInstanceCache cache = classMap.get(id);
-                        if (cache != null) {
-                            synchronized (cache) {
-                                cache.setCacheStatus(newStatus);
-                                log.debug("缓存预备删除数据, class:%s, id: %s, object: %s", objectClass.getName(), id, object);
-                            }
-                            // 尝试添加分表字段缓存
-                            addTableSplitFieldCache(classDesc, id, tableSplitFieldValue, true);
-                        }
-                    }
-                    return;
-                }*/
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(objectClass, key -> new ConcurrentHashMap<>());
                 ObjectInstanceCache cache = classMap.computeIfAbsent(id, key -> {
                     ObjectInstanceCache c = new ObjectInstanceCache();
@@ -1906,6 +1958,11 @@ public class TableOperatorFactory {
                 }
                 Comparable id = getIdValueFromObject(classDesc, object);
                 insertOrUpDateOrDelete(dataClass, id, object, CacheStatus.UPDATE);
+            }
+
+            @Override
+            public void updateNotNull(T object) {
+                getNoCachedCompletelyOperator(dataClass, sscTableInfo).updateNotNull(object);
             }
 
             @Override
@@ -2448,6 +2505,7 @@ public class TableOperatorFactory {
             public List<T> findByGroupField(String selectStr, Comparable tableSplitFieldValue, String fieldName, Comparable fieldValue) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByGroupField(selectStr, tableSplitFieldValue, fieldName, fieldValue);
             }
+
             @Override
             public List<T> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
                 return getNoCachedCompletelyOperator(dataClass, sscTableInfo).findByGroupField(selectStr, fieldName, fieldValue);
@@ -2564,6 +2622,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void updateNotNull(Object object) {
+                completelyOperator.updateNotNull(object);
+            }
+
+            @Override
             public void delete(Object o) {
                 completelyOperator.delete(o);
             }
@@ -2650,6 +2713,11 @@ public class TableOperatorFactory {
             @Override
             public void update(Object o) {
                 completelyOperator.update(o);
+            }
+
+            @Override
+            public void updateNotNull(Object object) {
+                completelyOperator.updateNotNull(object);
             }
 
             @Override
@@ -2798,12 +2866,11 @@ public class TableOperatorFactory {
 
     /**
      * 在根据唯一键查找时从缓存和数据库中均未找到，则将创建一个缓存对象，放入集合，防止击穿
-     *
-     * @param objectClass 数据类的class
+     *  @param objectClass 数据类的class
      * @param uniqueName  唯一键的名称
      * @param uniqueValue 唯一键计算后的值
      */
-    private ObjectInstanceCache addUniqueFieldCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue, CacheStatus cacheStatus, Object data) {
+    private void addUniqueFieldCacheObject(Class<?> objectClass, String uniqueName, Object uniqueValue, CacheStatus cacheStatus, Object data) {
         Map<Object, ObjectInstanceCache> uniqueMap = uniqueFieldCacheMap.computeIfAbsent(objectClass, key2 -> new ConcurrentHashMap<>())
                 .computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
         ObjectInstanceCache cache = new ObjectInstanceCache();
@@ -2811,7 +2878,7 @@ public class TableOperatorFactory {
         cache.setObjectInstance(data);
         long now = System.currentTimeMillis();
         cache.setLastUseTime(now);
-        return uniqueMap.putIfAbsent(uniqueValue, cache);
+        uniqueMap.putIfAbsent(uniqueValue, cache);
     }
 
     /*private Object getUniqueValueByMap(List<TwinsValue<String, Object>> conditions) {
