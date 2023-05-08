@@ -191,4 +191,17 @@ public class TableOperatorFactoryTest4 {
             e.printStackTrace();
         }
     }
+
+    @Test
+    public void test_updateStr() {
+        try {
+            TestFind testFind = new TestFind();
+            testFind.setId(1L);
+            testFind.setName("jack1");
+            testFind.setTime(1000L);
+            factory.getOperator(TestFind.class).update("name", testFind);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }

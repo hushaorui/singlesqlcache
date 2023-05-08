@@ -25,6 +25,11 @@ public interface BaseOperator<DATA> {
     void update(DATA data);
 
     /**
+     * 根据id更新指定的字段
+     */
+    void update(String updateStr, DATA data);
+
+    /**
      * 根据id删除数据
      */
     void delete(DATA data);

@@ -1019,6 +1019,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void update(String updateStr, Object object) {
+                completelyOperator.update(updateStr, object);
+            }
+
+            @Override
             public void updateNotNull(Object object) {
                 completelyOperator.updateNotNull(object);
             }
@@ -1120,6 +1125,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void update(String updateStr, Object object) {
+                completelyOperator.update(updateStr, object);
+            }
+
+            @Override
             public void updateNotNull(Object object) {
                 completelyOperator.updateNotNull(object);
             }
@@ -1210,6 +1220,10 @@ public class TableOperatorFactory {
 
             @Override
             public void update(Object object) {
+            }
+
+            @Override
+            public void update(String updateStr, Object object) {
             }
 
             @Override
@@ -1478,6 +1492,52 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void update(String updateStr, Object object) {
+                Object id = getIdValueFromObject(classDesc, object);
+                int tableIndex = getTableIndex(classDesc, object, id);
+                String[] array = updateStr.split("\\s*,\\s*");
+                List<Object> paramList = new ArrayList<>();
+                StringBuilder sql = new StringBuilder("update ");
+                sql.append(sscTableInfo.getTableNames()[tableIndex]).append(" set ");
+                boolean haveFieldUpdate = false;
+                Map<String, String> columnPropMapping = classDesc.getColumnPropMapping();
+                for (int i = 0; i < array.length; i++) {
+                    String columnName = classDesc.getColumnByProp(array[i]);
+                    String propName = columnPropMapping.get(columnName);
+                    if (propName == null) {
+                        continue;
+                    }
+                    try {
+                        Object fieldValue = classDesc.getPropGetMethods().get(propName).invoke(object);
+                        if (fieldValue == null) {
+                            // 字段为空的值不进行更新
+                            continue;
+                        }
+                        // 这里需要考虑将字段序列化
+                        paramList.add(getFieldValueAccordWithSql(fieldValue));
+                    } catch (Exception e) {
+                        log.error(String.format("获取字段值失败，class: %s, fieldName:%s", clazz.getName(), propName), e);
+                        continue;
+                    }
+                    if (haveFieldUpdate) {
+                        sql.append(", ");
+                    }
+                    sql.append(columnName).append(" = ?");
+                    haveFieldUpdate = true;
+                }
+                String idColumnName = classDesc.getColumnByProp(classDesc.getIdPropName());
+                if (!haveFieldUpdate) {
+                    // 一个需要更新的字段都没有，只能象征性 id = id
+                    sql.append(idColumnName).append(" = ").append(idColumnName);
+                }
+                sql.append(" where ").append(idColumnName).append(" = ?");
+                String updateSql = sql.toString();
+                paramList.add(id);
+                log.debug("执行更新语句(update)：%s, id:%s", updateSql, id);
+                jdbcTemplate.update(updateSql, paramList.toArray());
+            }
+
+            @Override
             public void updateNotNull(Object object) {
                 Object id = getIdValueFromObject(classDesc, object);
                 int tableIndex = getTableIndex(classDesc, object, id);
@@ -1581,11 +1641,11 @@ public class TableOperatorFactory {
                 }
             }
 
-            private String getRealSelectStr(String selectStr) {
+            private String getRealSimpleStr(String prefix, String selectStr) {
                 // 去除两端的空格和前面的select
                 selectStr = selectStr.trim();
-                if (selectStr.startsWith("select")) {
-                    selectStr = selectStr.substring("select".length()).trim();
+                if (selectStr.startsWith(prefix)) {
+                    selectStr = selectStr.substring(prefix.length()).trim();
                 }
                 String[] array = selectStr.split("\\s*,\\s*");
                 StringBuilder builder = new StringBuilder();
@@ -1601,7 +1661,7 @@ public class TableOperatorFactory {
             @Override
             public Object findById(String selectStr, Comparable id) {
                 int tableIndex = getTableIndex(classDesc, null, id);
-                String sql = sscTableInfo.getFindByIdSql(getRealSelectStr(selectStr), tableIndex);
+                String sql = sscTableInfo.getFindByIdSql(getRealSimpleStr("select ", selectStr), tableIndex);
                 try {
                     log.debug("执行查询语句(findById): %s, id:%s", sql, id);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -1627,7 +1687,7 @@ public class TableOperatorFactory {
             @Override
             public Object findById(String selectStr, Comparable id, Comparable tableSplitFieldValue) {
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindByIdSql(getRealSelectStr(selectStr), tableIndex);
+                String sql = sscTableInfo.getFindByIdSql(getRealSimpleStr("select ", selectStr), tableIndex);
                 try {
                     log.debug("执行查询语句(findById): %s, id:%s, tableSplitFieldValue:%s", sql, id, tableSplitFieldValue);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), id);
@@ -1660,7 +1720,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName);
                 Object[] params = getConditionParams(classDesc, propNames, data, false);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
@@ -1693,7 +1753,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), fieldValue);
@@ -1728,7 +1788,7 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), uniqueName, tableIndex);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName, tableIndex);
                 Object[] params = getConditionParams(classDesc, propNames, data, true);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
@@ -1816,7 +1876,7 @@ public class TableOperatorFactory {
 
             @Override
             public List<Object> findByGroupField(String selectStr, String fieldName, Comparable fieldValue) {
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), fieldName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), fieldName);
                 assert sql != null : new SscRuntimeException(String.format("class:%s 未知的分组字段名称：%s", classDesc.getDataClass().getName(), fieldName));
                 // 执行sql
                 log.debug("执行查询语句(findByGroupField)：%s, fieldName:%s, fieldValue:%s", sql, fieldName, fieldValue);
@@ -1848,7 +1908,7 @@ public class TableOperatorFactory {
                 }
                 // 根据分表字段获取对应的表的索引
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSelectStr(selectStr), fieldName, tableIndex);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), fieldName, tableIndex);
                 // 执行sql
                 log.debug("执行查询语句(findByGroupField)：%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
                         sql, tableSplitFieldValue, fieldName, fieldValue);
@@ -1958,6 +2018,11 @@ public class TableOperatorFactory {
                 }
                 Comparable id = getIdValueFromObject(classDesc, object);
                 insertOrUpDateOrDelete(dataClass, id, object, CacheStatus.UPDATE);
+            }
+
+            @Override
+            public void update(String updateStr, T object) {
+                getNoCachedCompletelyOperator(dataClass, sscTableInfo).update(updateStr, object);
             }
 
             @Override
@@ -2622,6 +2687,11 @@ public class TableOperatorFactory {
             }
 
             @Override
+            public void update(String updateStr, Object object) {
+                completelyOperator.update(updateStr, object);
+            }
+
+            @Override
             public void updateNotNull(Object object) {
                 completelyOperator.updateNotNull(object);
             }
@@ -2713,6 +2783,11 @@ public class TableOperatorFactory {
             @Override
             public void update(Object o) {
                 completelyOperator.update(o);
+            }
+
+            @Override
+            public void update(String updateStr, Object object) {
+                completelyOperator.update(updateStr, object);
             }
 
             @Override
@@ -2866,7 +2941,8 @@ public class TableOperatorFactory {
 
     /**
      * 在根据唯一键查找时从缓存和数据库中均未找到，则将创建一个缓存对象，放入集合，防止击穿
-     *  @param objectClass 数据类的class
+     *
+     * @param objectClass 数据类的class
      * @param uniqueName  唯一键的名称
      * @param uniqueValue 唯一键计算后的值
      */
