@@ -159,7 +159,11 @@ public abstract class SscStringUtils {
             // Date 类型不需要额外序列化
             return fieldValue;
         }
-        if (staticTypes.contains(fieldValue.getClass())) {
+        Class<?> aClass = fieldValue.getClass();
+        if (staticTypes.contains(aClass)) {
+            return fieldValue;
+        }
+        if (aClass.getName().startsWith("com.hushaorui.ssc.param.")) {
             return fieldValue;
         }
         // 其他的都需要序列化
