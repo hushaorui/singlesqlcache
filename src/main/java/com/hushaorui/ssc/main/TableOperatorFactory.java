@@ -1720,7 +1720,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), propNames);
                 Object[] params = getConditionParams(classDesc, propNames, data, false);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
@@ -1753,7 +1753,7 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), propNames);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s", sql, uniqueName);
                     return jdbcTemplate.queryForObject(sql, getRowMapper(), fieldValue);
@@ -1788,7 +1788,7 @@ public class TableOperatorFactory {
                     throw new SscRuntimeException("There is no uniqueName in class: " + clazz.getName());
                 }
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), uniqueName, tableIndex);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), tableIndex, propNames);
                 Object[] params = getConditionParams(classDesc, propNames, data, true);
                 try {
                     log.debug("执行查询语句(findByUniqueName): %s, uniqueName:%s,tableSplitFieldValue:%s", sql, uniqueName, tableSplitFieldValue);
@@ -1908,7 +1908,7 @@ public class TableOperatorFactory {
                 }
                 // 根据分表字段获取对应的表的索引
                 int tableIndex = getTableIndex(tableSplitFieldValue, classDesc.getTableCount());
-                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), fieldName, tableIndex);
+                String sql = sscTableInfo.getFindSqlByFieldName(getRealSimpleStr("select ", selectStr), tableIndex, fieldName);
                 // 执行sql
                 log.debug("执行查询语句(findByGroupField)：%s, tableSplitFieldValue:%s, fieldName:%s, fieldValue:%s",
                         sql, tableSplitFieldValue, fieldName, fieldValue);

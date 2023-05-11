@@ -7,8 +7,10 @@ import java.util.List;
 public class TestFind {
     private Long id;
     private List<Long> longs;
-    @FieldDesc(uniqueName = "name")
+    @FieldDesc(uniqueName = "name_num")
     private String name;
+    @FieldDesc(uniqueName = "name_num")
+    private Integer num;
     @FieldDesc(isGroup = true)
     private Long time;
 
@@ -34,6 +36,14 @@ public class TestFind {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Integer getNum() {
+        return num;
+    }
+
+    public void setNum(Integer num) {
+        this.num = num;
     }
 
     public Long getTime() {

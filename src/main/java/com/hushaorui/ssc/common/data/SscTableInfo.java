@@ -182,17 +182,38 @@ public abstract class SscTableInfo {
         }
     }
 
-    public String getFindSqlByFieldName(String selectStr, String fieldName) {
-        return getFindSqlByFieldName(selectStr, fieldName, tableNames.length == 1 ? 0 : null);
+    public String getFindSqlByFieldName(String selectStr, Set<String> fieldNames) {
+        String[] array = new String[fieldNames.size()];
+        int index = 0;
+        for (String item : fieldNames) {
+            array[index ++] = item;
+        }
+        return getFindSqlByFieldName(selectStr, array);
     }
 
-    public String getFindSqlByFieldName(String selectStr, String fieldName, Integer tableIndex) {
-        String columnName = classDesc.getColumnByProp(fieldName);
+    public String getFindSqlByFieldName(String selectStr, String... fieldNames) {
+        return getFindSqlByFieldName(selectStr, tableNames.length == 1 ? 0 : null, fieldNames);
+    }
+
+    public String getFindSqlByFieldName(String selectStr, Integer tableIndex, Set<String> fieldNames) {
+        String[] array = new String[fieldNames.size()];
+        int index = 0;
+        for (String item : fieldNames) {
+            array[index ++] = item;
+        }
+        return getFindSqlByFieldName(selectStr, tableIndex, array);
+    }
+
+    public String getFindSqlByFieldName(String selectStr, Integer tableIndex, String... fieldNames) {
+        String[] columnNames = new String[fieldNames.length];
+        for (int i = 0; i < fieldNames.length; i++) {
+            columnNames[i] = classDesc.getColumnByProp(fieldNames[i]);
+        }
         String key;
         if (tableIndex == null) {
-            key = String.format("%s by %s", selectStr, columnName);
+            key = String.format("%s by %s", selectStr, Arrays.toString(columnNames));
         } else {
-            key = String.format("%s by %s with %s", selectStr, columnName, tableIndex);
+            key = String.format("%s by %s with %s", selectStr, Arrays.toString(columnNames), tableIndex);
         }
         if (findByUniqueSql == null) {
             synchronized (this) {
@@ -205,7 +226,7 @@ public abstract class SscTableInfo {
         if (sql != null) {
             return sql;
         } else {
-            return putNoCachedFindUniqueSqlToMap(selectStr, columnName, key, tableIndex);
+            return putNoCachedFindUniqueSqlToMap(selectStr, key, columnNames);
         }
     }
 
@@ -397,21 +418,23 @@ public abstract class SscTableInfo {
 
     protected abstract void appendLimitString(StringBuilder builder);
 
-    protected String putNoCachedFindUniqueSqlToMap(String selectStr, String columnName, String key, Integer tableIndex) {
+    protected String putNoCachedFindUniqueSqlToMap(String selectStr, String key, String... columnNames) {
         String sql;
-        if (tableIndex == null) {
-            StringBuilder builder = new StringBuilder();
-            for (int i = 0; i < tableNames.length; i++) {
-                if (i > 0) {
-                    builder.append("\n union all \n");
-                }
-                builder.append("select ").append(selectStr).append(" from ").append(tableNames[i]);
-                builder.append(" where ").append(columnName).append(" = ?");
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < tableNames.length; i++) {
+            if (i > 0) {
+                builder.append("\n union all \n");
             }
-            sql = builder.toString();
-        } else {
-            sql = "select " + selectStr + " from " + tableNames[tableIndex] + " where " + columnName + " = ?";
+            builder.append("select ").append(selectStr).append(" from ").append(tableNames[i]);
+            builder.append(" where ");
+            for (int j = 0; j < columnNames.length; j++) {
+                if (j > 0) {
+                    builder.append(" and ");
+                }
+                builder.append(columnNames[j]).append(" = ?");
+            }
         }
+        sql = builder.toString();
         findByUniqueSql.put(key, sql);
         return sql;
     }

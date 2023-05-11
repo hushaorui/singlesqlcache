@@ -53,6 +53,7 @@ public class TableOperatorFactoryTest4 {
             longs.add(5L);
             testFind.setLongs(longs);
             testFind.setName("jack");
+            testFind.setNum(10);
             testFind.setTime(System.currentTimeMillis());
             operator.insert(testFind);
         } catch (Exception e) {
@@ -77,9 +78,12 @@ public class TableOperatorFactoryTest4 {
     public void test_findByUniqueName() {
         try {
             Operator<TestFind> operator = factory.getOperator(TestFind.class);
-            TestFind testFind = operator.findByUniqueName("id,name, longs", "name", "jack");
+            TestFind find = new TestFind();
+            find.setName("jack");
+            find.setNum(10);
+            TestFind testFind = operator.findByUniqueName("id,name, longs", "name_num", find);
             System.out.println(jsonSerializer.toJsonString(testFind));
-            testFind = operator.findByUniqueName("id,name", "name", "jack");
+            testFind = operator.findByUniqueName("id,name", "name_num", find);
             System.out.println(jsonSerializer.toJsonString(testFind));
         } catch (Exception e) {
             e.printStackTrace();
@@ -204,4 +208,5 @@ public class TableOperatorFactoryTest4 {
             e.printStackTrace();
         }
     }
+
 }
