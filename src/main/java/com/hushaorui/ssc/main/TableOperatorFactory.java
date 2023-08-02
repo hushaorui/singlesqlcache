@@ -2220,9 +2220,10 @@ public class TableOperatorFactory {
                 if (propNames == null) {
                     throw new SscRuntimeException("There is no uniqueName in class: " + dataClass.getName());
                 }
-                if (propNames.size() > 0) {
+                if (propNames.size() > 1) {
                     throw new SscRuntimeException(String.format("唯一键：%s 含有多个字段，不能使用此方法，class:%s", uniqueName, dataClass.getName()));
                 }
+                uniqueName = propNames.iterator().next();
                 if (!getSwitch) {
                     // 缓存已关闭，直接调用数据库查询
                     log.debug("缓存已关闭，直接查询数据库, class:%s, uniqueName:%s, uniqueValue:%s", dataClass.getName(), uniqueName, uniqueValue);
