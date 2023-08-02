@@ -16,6 +16,10 @@ public @interface DataClass {
     boolean cached() default true;
     /** id是否使用自动生成策略，默认使用 */
     boolean isAuto() default true;
+    /** 在使用自动生成策略且使用默认策略后生效，作为Long类型或String类型的id的起始值 */
+    long idFirstLongValue() default 1L;
+    /** 在使用自动生成策略且使用默认策略后生效，作为Integer类型的id的起始值 */
+    int idFirstIntegerValue() default 1;
     /** 为true时默认使用全局配置中同名配置值 */
     boolean appendNumberAtFirstTable() default true;
 }

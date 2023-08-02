@@ -46,6 +46,11 @@ public class DataClassDesc extends CommonClassDesc {
     /** 是否使用id生成策略 */
     private boolean useIdGeneratePolicy;
 
+    /** id为long类型时的起始值 */
+    private long idFirstLongValue;
+    /** id为int类型时的起始值 */
+    private int idFirstIntegerValue;
+
     public String getTableName() {
         return tableName;
     }
@@ -172,6 +177,22 @@ public class DataClassDesc extends CommonClassDesc {
 
     public void setUseIdGeneratePolicy(boolean useIdGeneratePolicy) {
         this.useIdGeneratePolicy = useIdGeneratePolicy;
+    }
+
+    public long getIdFirstLongValue() {
+        return idFirstLongValue;
+    }
+
+    public void setIdFirstLongValue(long idFirstLongValue) {
+        this.idFirstLongValue = idFirstLongValue;
+    }
+
+    public int getIdFirstIntegerValue() {
+        return idFirstIntegerValue;
+    }
+
+    public void setIdFirstIntegerValue(int idFirstIntegerValue) {
+        this.idFirstIntegerValue = idFirstIntegerValue;
     }
 
     public String getColumnByProp(String propName) {

@@ -571,6 +571,10 @@ public class TableOperatorFactory {
         String tableName;
         // 使用使用id生成策略
         boolean idIsAuto;
+        //id为long类型时的起始值
+        long idFirstLongValue;
+        //id为int类型时的起始值
+        int idFirstIntegerValue;
         if (annotation == null) {
             // 默认不分表
             tableCount = 1;
@@ -581,6 +585,8 @@ public class TableOperatorFactory {
             appendNumberAtFirstTable = true;
             // 默认id使用自动生成策略
             idIsAuto = true;
+            idFirstLongValue = 1;
+            idFirstIntegerValue = 1;
             // 默认使用id作为分表字段，这里不需指定
             tableSplitField = null;
         } else {
@@ -588,6 +594,8 @@ public class TableOperatorFactory {
             cached = annotation.cached();
             appendNumberAtFirstTable = annotation.appendNumberAtFirstTable();
             idIsAuto = annotation.isAuto();
+            idFirstLongValue = annotation.idFirstLongValue();
+            idFirstIntegerValue = annotation.idFirstIntegerValue();
             String value = annotation.value();
             if (value.length() == 0) {
                 tableName = generateTableName(clazz);
@@ -768,6 +776,8 @@ public class TableOperatorFactory {
         dataClassDesc.setPropSetMethods(propSetMethods.isEmpty() ? Collections.emptyMap() : propSetMethods);
         dataClassDesc.setIdPropName(idPropName);
         dataClassDesc.setUseIdGeneratePolicy(idIsAuto);
+        dataClassDesc.setIdFirstLongValue(idFirstLongValue);
+        dataClassDesc.setIdFirstIntegerValue(idFirstIntegerValue);
         dataClassDesc.setNotNullProps(notNullProps.isEmpty() ? Collections.emptySet() : notNullProps);
         dataClassDesc.setPropDefaultValues(propDefaultValues.isEmpty() ? Collections.emptyMap() : propDefaultValues);
         dataClassDesc.setUniqueProps(uniqueProps.isEmpty() ? Collections.emptyMap() : uniqueProps);
@@ -843,7 +853,7 @@ public class TableOperatorFactory {
                     }
                 }
                 maxId++;
-                policy.map.put(clazz, new AtomicInteger(maxId));
+                policy.map.put(clazz, new AtomicInteger(Math.max(maxId, dataClassDesc.getIdFirstIntegerValue())));
                 log.debug("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId);
             } else {
                 Map<Class<?>, AtomicLong> map;
@@ -865,7 +875,7 @@ public class TableOperatorFactory {
                         }
                     }
                     maxId++;
-                    map.put(clazz, new AtomicLong(maxId));
+                    map.put(clazz, new AtomicLong(Math.max(maxId, dataClassDesc.getIdFirstLongValue())));
                     log.debug("默认id生成器:%s, 初始化起始id:%s", idGeneratePolicy.getClass().getName(), maxId);
                 }
             }
@@ -1976,7 +1986,7 @@ public class TableOperatorFactory {
 
             private void insertOrUpDateOrDelete(Class<?> objectClass, Comparable id, Comparable tableSplitFieldValue, T object, CacheStatus newStatus) {
                 Map<Comparable, ObjectInstanceCache> classMap = idCacheMap.computeIfAbsent(objectClass, key -> new ConcurrentHashMap<>());
-                ObjectInstanceCache cache = classMap.computeIfAbsent(id, key -> {
+                ObjectInstanceCache cache = classMap.computeIfAbsent(id, k -> {
                     ObjectInstanceCache c = new ObjectInstanceCache();
                     c.setId(id);
                     c.setObjectClass(objectClass);
@@ -2264,7 +2274,8 @@ public class TableOperatorFactory {
 
             private T selectByUniqueValue(Set<String> propNames, String uniqueName, Comparable uniqueValue, T data) {
                 Map<Object, ObjectInstanceCache> cacheMap = uniqueFieldCacheMap.computeIfAbsent(dataClass, key -> new ConcurrentHashMap<>()).computeIfAbsent(uniqueName, key -> new ConcurrentHashMap<>());
-                ObjectInstanceCache cache = cacheMap.get(uniqueValue);
+                Object key = getUniqueValueByUniqueName(uniqueValue);
+                ObjectInstanceCache cache = cacheMap.get(key);
                 if (cache == null) {
                     log.debug("未找到缓存(selectByUniqueName)，直接查询数据库, class:%s, uniqueName:%s, key:%s", dataClass.getName(), uniqueName, uniqueValue);
                     // 缓存击穿，查询数据库
@@ -2278,7 +2289,7 @@ public class TableOperatorFactory {
                     // 如果没有id，无法放入缓存
                     if (value == null) {
                         // 防止击穿
-                        addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_DELETE, null);
+                        addUniqueFieldCacheObject(dataClass, uniqueName, key, CacheStatus.AFTER_DELETE, null);
                     } else {
                         Comparable id = getIdValueFromObject(classDesc, value);
                         if (id != null) {
@@ -2286,7 +2297,7 @@ public class TableOperatorFactory {
                             insertOrUpDateOrDelete(dataClass, id, value, CacheStatus.AFTER_INSERT);
                         } else {
                             // 没有id(一般不可能存在这种情况)
-                            addUniqueFieldCacheObject(dataClass, uniqueName, uniqueValue, CacheStatus.AFTER_INSERT, value);
+                            addUniqueFieldCacheObject(dataClass, uniqueName, key, CacheStatus.AFTER_INSERT, value);
                         }
                     }
                     return value;
@@ -3033,17 +3044,33 @@ public class TableOperatorFactory {
         return key.toString().intern();
     }*/
 
+    private Object getUniqueValueByUniqueName(Object uniqueValue) {
+        Class<?> fieldValueClass = uniqueValue.getClass();
+        if (fieldValueClass.equals(String.class)) {
+            return ((String) uniqueValue).intern();
+        }
+        if (SscStringUtils.staticTypes.contains(fieldValueClass) && ! fieldValueClass.isArray()) {
+            // 一些基础类型
+            return uniqueValue;
+        }
+        String jsonString = globalConfig.getJsonSerializer().toJsonString(uniqueValue);
+        // 这里为了保证唯一性
+        return SscStringUtils.md5Encode(jsonString.substring(0, jsonString.length() / 2)) + SscStringUtils.md5Encode(jsonString.substring(jsonString.length() / 2));
+    }
+
     private Object getUniqueValueByUniqueName(DataClassDesc classDesc, Set<String> propNames, Object data) {
         int size = propNames.size();
-        JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
+
         if (size == 1) {
-            return SscStringUtils.md5Encode(jsonSerializer.toJsonString(getFieldValueFromObject(classDesc, propNames.iterator().next(), data)));
+            Object fieldValue = getFieldValueFromObject(classDesc, propNames.iterator().next(), data);
+            return getUniqueValueByUniqueName(fieldValue);
         } else {
             // 联合字段
             StringBuilder builder1 = new StringBuilder();
             StringBuilder builder2 = new StringBuilder();
             int halfSize = size / 2;
             int i = 0;
+            JSONSerializer jsonSerializer = globalConfig.getJsonSerializer();
             for (String propName : propNames) {
                 Object fieldValue = getFieldValueFromObject(classDesc, propName, data);
                 if (i <= halfSize) {
